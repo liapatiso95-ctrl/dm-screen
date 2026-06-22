@@ -15,7 +15,17 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <style>html,body{margin:0;padding:0;background:#140f0b;color:#e8d5b0;font-family:'EB Garamond',serif;-webkit-text-size-adjust:100%}*{box-sizing:border-box}input,select,textarea{font-family:inherit}::placeholder{color:rgba(232,213,176,.3)}select option{background:#1a1410;color:#e8d5b0}@keyframes dmPop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+/* Light theme: invert the whole page, then double-invert images so they render normally.
+   Applied to the root element so full-screen (inset:0) modals still cover the viewport. */
+html.light-theme{filter:invert(1) hue-rotate(180deg) contrast(1.1)}
+html.light-theme img{filter:contrast(0.909) invert(1) hue-rotate(180deg)}
+/* Faux-bold: thicken every glyph by its own color so small text reads heavier in light mode. */
+html.light-theme,html.light-theme input,html.light-theme select,html.light-theme textarea,html.light-theme button{-webkit-text-stroke:0.3px currentColor}
 </style>
+<script>
+// Apply saved theme as early as possible to avoid a flash of the wrong theme.
+(function(){try{if((localStorage.getItem('dnd5e_theme')||'dark')==='light')document.documentElement.classList.add('light-theme');}catch(e){}})();
+</script>
 </head><body><div id="root"></div>
 <script type="text/babel" data-presets="react">
 const REPO_RAW_BASE="https://raw.githubusercontent.com/liapatiso95-ctrl/character-sheet/main/";
@@ -5001,6 +5011,9 @@ function App(){
   const [confirmState,setConfirmState]=useState({open:false,message:"",onConfirm:null});
   const fileRef=useRef(null);
   const fileHandle=useRef(null);
+  const [theme,setTheme]=useState(function(){try{return localStorage.getItem("dnd5e_theme")||"dark";}catch(e){return "dark";}});
+  useEffect(function(){document.documentElement.classList.toggle("light-theme",theme==="light");try{localStorage.setItem("dnd5e_theme",theme);}catch(e){}},[theme]);
+  const toggleTheme=function(){setTheme(function(t){return t==="light"?"dark":"light";});};
   const [saveMsg,setSaveMsg]=useState("");
   const flashSave=function(m){setSaveMsg(m);setTimeout(function(){setSaveMsg("");},2600);};
   const [addMsg,setAddMsg]=useState(null);
@@ -5063,14 +5076,17 @@ function App(){
     <style>{CSS}</style>
     <div style={{maxWidth:980,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18,flexWrap:"wrap"}}>
-        <div style={{flex:1,display:"flex",alignItems:"baseline",gap:8}}><span style={{fontFamily:"'Cinzel Decorative',cursive",fontSize:18,color:GOLDL,letterSpacing:1}}>Dungeon Master Screen</span><span style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.35)"}}>v14 · md-creature</span></div>
+        <div style={{flex:1,display:"flex",alignItems:"baseline",gap:8}}><span style={{fontFamily:"'Cinzel Decorative',cursive",fontSize:18,color:GOLDL,letterSpacing:1}}>Dungeon Master Screen</span><span style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.35)"}}>v15</span></div>
         <div onClick={doSave} style={btn("201,150,42")} title="Save everything to a JSON file (choose location & name)">Save</div>
         <div onClick={doSaveAs} style={btn("201,150,42")} title="Save to a new file / location">Save As</div>
         <div onClick={function(){if(fileRef.current)fileRef.current.click();}} style={btn("201,150,42")} title="Load from a JSON file">Load</div>
+        <div onClick={toggleTheme} style={btn("232,213,176")} title="Toggle light / dark theme">{theme==="light"?"☀ Dark":"☾ Light"}</div>
+        {saveMsg&&<span style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(143,214,160,.9)",marginLeft:4}}>{saveMsg}</span>}
+      </div>
+      <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:22,marginBottom:20,flexWrap:"wrap"}}>
         {tabBtn("combat","Combat","123,79,207")}
         {tabBtn("compendium","Compendium","201,150,42")}
         {tabBtn("codex","Codex","74,156,92")}
-        {saveMsg&&<span style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(143,214,160,.9)",marginLeft:4}}>{saveMsg}</span>}
       </div>
     </div>
     <div style={{display:tab==="combat"?"block":"none"}}><CombatTracker combat={combat} setCombat={setCombat} setLightbox={setLightbox} onAddCreature={addToCombat}/></div>
