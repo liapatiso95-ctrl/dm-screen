@@ -3591,69 +3591,35 @@ function useCreatureCompendium(active){
   return _creatureCache;
 }
 
-// ── Sticky section rail (ported from the character sheet) ────────────────────
-// A left-gutter pair of expand(+)/collapse(−) buttons that stays vertically
-// centred in the viewport while its host section is on screen, clamped to the
-// host's own height. Render it as a direct child of a position:relative host
-// that has enough left padding to hold the gutter (~38px). Positioning is done
-// in JS by the controller below.
-function SectionRail({accent,onExpand,onCollapse,label}){
-  var a=accent||"184,154,240";
-  var btn={
-    cursor:"pointer",userSelect:"none",
-    fontFamily:"'Cinzel',serif",fontSize:17,fontWeight:700,lineHeight:1,
-    width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",
-    color:"rgba("+a+",.95)",
-    border:"1px solid rgba("+a+",.55)",
-    background:"rgba("+a+",.16)",
-    borderRadius:6,
-    boxShadow:"0 1px 6px rgba(0,0,0,.45)"
-  };
-  var hov=function(on){return function(e){e.currentTarget.style.background="rgba("+a+","+(on?".30":".16")+")";e.currentTarget.style.borderColor="rgba("+a+","+(on?".9":".55")+")";};};
-  var click=function(fn){return function(e){e.stopPropagation();if(fn)fn();};};
-  return (
-    <div className="secrail" style={{position:"absolute",left:4,top:0,width:30,display:"flex",flexDirection:"column",gap:6,alignItems:"center",zIndex:6,willChange:"transform"}}>
-      <div onClick={click(onExpand)} title={(label?label+" — ":"")+"Expand all"} style={btn} onMouseEnter={hov(true)} onMouseLeave={hov(false)}>+</div>
-      <div onClick={click(onCollapse)} title={(label?label+" — ":"")+"Collapse all"} style={btn} onMouseEnter={hov(true)} onMouseLeave={hov(false)}>−</div>
-    </div>
-  );
+// ── Fixed expand/collapse rail ───────────────────────────────────────────────
+// A far-left pair of +/− buttons, pinned to the viewport edge and vertically
+// centred, exactly like the Combat tracker's statblock rail. It floats over the
+// page (position:fixed) so it never steals horizontal space from the content and
+// always stays visible while scrolling. Render it anywhere inside the active
+// tab; pass show={false} to hide it.
+function EcRail({onExpand,onCollapse,show}){
+  if(show===false) return null;
+  var b={cursor:"pointer",userSelect:"none",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Cinzel',serif",fontSize:18,color:GOLDL,background:"rgba(28,21,16,.92)",border:"1px solid rgba(201,150,42,.5)",borderRadius:4,boxShadow:"0 2px 8px rgba(0,0,0,.5)"};
+  return <div style={{position:"fixed",left:6,top:"50%",transform:"translateY(-50%)",zIndex:90,display:"flex",flexDirection:"column",gap:6}}>
+    <div onClick={onExpand} title="Expand all" style={b}>+</div>
+    <div onClick={onCollapse} title="Collapse all" style={b}>−</div>
+  </div>;
 }
-(function(){
-  if(typeof window==="undefined"||window.__secRailInit) return;
-  window.__secRailInit=true;
-  var raf=null;
-  function place(){
-    raf=null;
-    var vh=window.innerHeight||document.documentElement.clientHeight;
-    var rails=document.getElementsByClassName("secrail");
-    for(var i=0;i<rails.length;i++){
-      var rail=rails[i];
-      var host=rail.parentElement;
-      if(!host) continue;
-      var hr=host.getBoundingClientRect();
-      var H=rail.offsetHeight||62;
-      var maxTop=hr.height-H;
-      var t=(vh/2-H/2)-hr.top;       // host-relative top that centres the rail in the viewport
-      if(t>maxTop) t=maxTop;          // pin to section bottom as it leaves
-      if(t<0) t=0;                    // pin to section top as it enters
-      if(maxTop<0) t=0;               // section shorter than the buttons: pin to top
-      rail.style.transform="translateY("+Math.round(t)+"px)";
-    }
-  }
-  function schedule(){ if(raf==null) raf=requestAnimationFrame(place); }
-  window.addEventListener("scroll",schedule,{passive:true});
-  window.addEventListener("resize",schedule);
-  if(window.MutationObserver){
-    var mo=new MutationObserver(schedule);
-    var start=function(){ if(document.body){ mo.observe(document.body,{childList:true,subtree:true}); schedule(); } else { setTimeout(start,50); } };
-    start();
-  } else { setInterval(schedule,200); }
-})();
+
+// Session-only Compendium memory: remembers the active list (kind) and each
+// list's filters across tab switches, for this page session only. Never written
+// to the saved JSON and cleared on a full page reload. Page number is not kept.
+var _cmpSession={kind:"spells",byKind:{}};
 
 function CompendiumPage({onAddCreature}){
   var c={spellClasses:[],exploitClasses:[],sp:{},inv:[],expl:{},creatures:[],fts:[]};
   var s=function(){};
   const {useState:us}=React;
+  // Restore the last session's active list and that list's filters (session-only,
+  // never persisted to JSON). Page number is intentionally not restored.
+  const _ck0=_cmpSession.kind||"spells";
+  const _cf0=_cmpSession.byKind[_ck0]||{};
+  const _g=function(k,d){return _cf0[k]!==undefined?_cf0[k]:d;};
   const spellCache=useSpellCompendium();
   const featCache=useFeatCompendium();
   const itemCache=useItemCompendium();
@@ -3663,45 +3629,45 @@ function CompendiumPage({onAddCreature}){
   const [creaturesEnabled,setCreaturesEnabled]=us(true);
   const [lightbox,setLightbox]=us(null); // enlarged fluff image URL, or null
   const creatureCache=useCreatureCompendium(creaturesEnabled);
-  const [kind,setKind]=us("spells"); // spells | feats | items | exploits | creatures
-  const [query,setQuery]=us("");
-  const [descQuery,setDescQuery]=us("");
+  const [kind,setKind]=us(_ck0); // spells | feats | items | exploits | creatures
+  const [query,setQuery]=us(_g("query",""));
+  const [descQuery,setDescQuery]=us(_g("descQuery",""));
   // Debounced copies — used when filtering the large item set so typing stays responsive.
-  const [dQuery,setDQuery]=us("");
-  const [dDescQuery,setDDescQuery]=us("");
+  const [dQuery,setDQuery]=us(_g("query",""));
+  const [dDescQuery,setDDescQuery]=us(_g("descQuery",""));
   React.useEffect(function(){var t=setTimeout(function(){setDQuery(query);},140);return function(){clearTimeout(t);};},[query]);
   React.useEffect(function(){var t=setTimeout(function(){setDDescQuery(descQuery);},140);return function(){clearTimeout(t);};},[descQuery]);
   const qEff=kind==="items"?dQuery:query;
   const dqEff=kind==="items"?dDescQuery:descQuery;
-  const [fLevel,setFLevel]=us("any");
-  const [fSchool,setFSchool]=us("any");
-  const [fClass,setFClass]=us("");
-  const [fCast,setFCast]=us("any");
-  const [fRitual,setFRitual]=us("any"); // any | yes | no
-  const [fConc,setFConc]=us("any");
-  const [fRarity,setFRarity]=us("any");
-  const [fAttune,setFAttune]=us("any");
-  const [fType,setFType]=us("");
-  const [fAttuneTag,setFAttuneTag]=us("");
-  const [showGeneric,setShowGeneric]=us(false); // show variant/generic item parents (default off)
+  const [fLevel,setFLevel]=us(_g("fLevel","any"));
+  const [fSchool,setFSchool]=us(_g("fSchool","any"));
+  const [fClass,setFClass]=us(_g("fClass",""));
+  const [fCast,setFCast]=us(_g("fCast","any"));
+  const [fRitual,setFRitual]=us(_g("fRitual","any")); // any | yes | no
+  const [fConc,setFConc]=us(_g("fConc","any"));
+  const [fRarity,setFRarity]=us(_g("fRarity","any"));
+  const [fAttune,setFAttune]=us(_g("fAttune","any"));
+  const [fType,setFType]=us(_g("fType",""));
+  const [fAttuneTag,setFAttuneTag]=us(_g("fAttuneTag",""));
+  const [showGeneric,setShowGeneric]=us(_g("showGeneric",false)); // show variant/generic item parents (default off)
   const [pickedId,setPickedId]=us(null); // id of the randomly-chosen item to highlight
   const [showQueryHelp,setShowQueryHelp]=us(false); // search-syntax help popup
-  const [fPrereq,setFPrereq]=us("any"); // any | yes | no
-  const [fPrereqText,setFPrereqText]=us("");
-  const [fAbilities,setFAbilities]=us([]); // selected ability codes
-  const [fDegree,setFDegree]=us("any"); // exploit degree filter
-  const [fExec,setFExec]=us(""); // exploit execution textbox filter
-  const [fExClass,setFExClass]=us(""); // exploit class textbox filter
-  const [fCType,setFCType]=us("any"); // creature type
-  const [fCrMin,setFCrMin]=us("any"); // creature CR minimum
-  const [fCrMax,setFCrMax]=us("any"); // creature CR maximum
-  const [fEnv,setFEnv]=us("any"); // creature environment
-  const [fAbl,setFAbl]=us("any"); // creature ability to filter (STR/DEX/.../any)
-  const [fAblMin,setFAblMin]=us(""); // ability score minimum
-  const [fAblMax,setFAblMax]=us(""); // ability score maximum
+  const [fPrereq,setFPrereq]=us(_g("fPrereq","any")); // any | yes | no
+  const [fPrereqText,setFPrereqText]=us(_g("fPrereqText",""));
+  const [fAbilities,setFAbilities]=us(_g("fAbilities",[])); // selected ability codes
+  const [fDegree,setFDegree]=us(_g("fDegree","any")); // exploit degree filter
+  const [fExec,setFExec]=us(_g("fExec","")); // exploit execution textbox filter
+  const [fExClass,setFExClass]=us(_g("fExClass","")); // exploit class textbox filter
+  const [fCType,setFCType]=us(_g("fCType","any")); // creature type
+  const [fCrMin,setFCrMin]=us(_g("fCrMin","any")); // creature CR minimum
+  const [fCrMax,setFCrMax]=us(_g("fCrMax","any")); // creature CR maximum
+  const [fEnv,setFEnv]=us(_g("fEnv","any")); // creature environment
+  const [fAbl,setFAbl]=us(_g("fAbl","any")); // creature ability to filter (STR/DEX/.../any)
+  const [fAblMin,setFAblMin]=us(_g("fAblMin","")); // ability score minimum
+  const [fAblMax,setFAblMax]=us(_g("fAblMax","")); // ability score maximum
   const [expanded,setExpanded]=us({});
   const [page,setPage]=us(0);
-  const [pageSize,setPageSize]=us(20); // results per page: 10/20/50/100
+  const [pageSize,setPageSize]=us(_g("pageSize",20)); // results per page: 10/20/50/100
   const [confirmAdd,setConfirmAdd]=us(null); // the result object pending confirmation
   const [crAdd,setCrAdd]=us(null); // {entry, tag, cls} pending creature add (spell-class pick for summons)
   const [addCls,setAddCls]=us(""); // selected class when adding a spell
@@ -3711,7 +3677,7 @@ function CompendiumPage({onAddCreature}){
   const [weightVal,setWeightVal]=us("");
   const [srdResults,setSrdResults]=us([]);
   const [srdLoading,setSrdLoading]=us(false);
-  const [includeSrd,setIncludeSrd]=us(true);
+  const [includeSrd,setIncludeSrd]=us(_g("includeSrd",true));
   const debounceRef=React.useRef(null);
 
   // Convert a CR string ("1/4", "2", "") to a number, or null if unknown.
@@ -3724,8 +3690,26 @@ function CompendiumPage({onAddCreature}){
   var CREATURE_TYPES=["aberration","beast","celestial","construct","dragon","elemental","fey","fiend","giant","humanoid","monstrosity","ooze","plant","undead"];
   var ENVIRONMENTS=["arctic","coastal","desert","forest","grassland","hill","mountain","planar","swamp","underdark","underwater","urban"];
 
-  // Reset filters when switching kind
-  function switchKind(k){setKind(k);setExpanded({});setSrdResults([]);setPage(0);setFDegree("any");setFExec("");setFExClass("");setFCType("any");setFCrMin("any");setFCrMax("any");setFEnv("any");setFAbl("any");setFAblMin("");setFAblMax("");}
+  // ── Session filter memory ──────────────────────────────────────────────────
+  // Gather every persisted filter into a plain object, restore one, and the
+  // per-list defaults. Used to remember each list's filters across tab switches.
+  function readFilters(){return {query:query,descQuery:descQuery,fLevel:fLevel,fSchool:fSchool,fClass:fClass,fCast:fCast,fRitual:fRitual,fConc:fConc,fRarity:fRarity,fAttune:fAttune,fType:fType,fAttuneTag:fAttuneTag,showGeneric:showGeneric,fPrereq:fPrereq,fPrereqText:fPrereqText,fAbilities:fAbilities,fDegree:fDegree,fExec:fExec,fExClass:fExClass,fCType:fCType,fCrMin:fCrMin,fCrMax:fCrMax,fEnv:fEnv,fAbl:fAbl,fAblMin:fAblMin,fAblMax:fAblMax,includeSrd:includeSrd,pageSize:pageSize};}
+  function defaultFilters(){return {query:"",descQuery:"",fLevel:"any",fSchool:"any",fClass:"",fCast:"any",fRitual:"any",fConc:"any",fRarity:"any",fAttune:"any",fType:"",fAttuneTag:"",showGeneric:false,fPrereq:"any",fPrereqText:"",fAbilities:[],fDegree:"any",fExec:"",fExClass:"",fCType:"any",fCrMin:"any",fCrMax:"any",fEnv:"any",fAbl:"any",fAblMin:"",fAblMax:"",includeSrd:true,pageSize:20};}
+  function applyFilters(f){f=f||{};setQuery(f.query||"");setDescQuery(f.descQuery||"");setDQuery(f.query||"");setDDescQuery(f.descQuery||"");setFLevel(f.fLevel||"any");setFSchool(f.fSchool||"any");setFClass(f.fClass||"");setFCast(f.fCast||"any");setFRitual(f.fRitual||"any");setFConc(f.fConc||"any");setFRarity(f.fRarity||"any");setFAttune(f.fAttune||"any");setFType(f.fType||"");setFAttuneTag(f.fAttuneTag||"");setShowGeneric(!!f.showGeneric);setFPrereq(f.fPrereq||"any");setFPrereqText(f.fPrereqText||"");setFAbilities(Array.isArray(f.fAbilities)?f.fAbilities:[]);setFDegree(f.fDegree||"any");setFExec(f.fExec||"");setFExClass(f.fExClass||"");setFCType(f.fCType||"any");setFCrMin(f.fCrMin||"any");setFCrMax(f.fCrMax||"any");setFEnv(f.fEnv||"any");setFAbl(f.fAbl||"any");setFAblMin(f.fAblMin||"");setFAblMax(f.fAblMax||"");setIncludeSrd(f.includeSrd!==undefined?!!f.includeSrd:true);setPageSize(f.pageSize||20);}
+  // Mirror the active list + its current filters into the session store on every
+  // change (cheap; the store is a plain in-memory object, never page number).
+  React.useEffect(function(){_cmpSession.kind=kind;_cmpSession.byKind[kind]=readFilters();});
+
+  // Switch list: stash the current list's filters, then load the target list's
+  // remembered filters (or its defaults the first time it's opened this session).
+  function switchKind(k){
+    _cmpSession.byKind[kind]=readFilters();
+    _cmpSession.kind=k;
+    var saved=_cmpSession.byKind[k];
+    setKind(k);
+    applyFilters(saved||defaultFilters());
+    setExpanded({});setSrdResults([]);setPage(0);setPickedId(null);
+  }
 
   // Reset to first page whenever a search or filter changes
   React.useEffect(function(){setPage(0);setPickedId(null);},[query,descQuery,fLevel,fSchool,fClass,fCast,fRitual,fConc,fRarity,fAttune,fType,fAttuneTag,fPrereq,fPrereqText,fAbilities,fDegree,fExec,fExClass,fCType,fCrMin,fCrMax,fEnv,fAbl,fAblMin,fAblMax,includeSrd,kind,showGeneric,pageSize]);
@@ -3974,6 +3958,9 @@ function CompendiumPage({onAddCreature}){
 
   return (
     <div>
+      <EcRail show={pageResults.length>0}
+        onExpand={function(){setExpanded(function(e){var n=Object.assign({},e);pageResults.forEach(function(r,idx){n[rowId(r,curPage*PER_PAGE+idx)]=true;});return n;});}}
+        onCollapse={function(){setExpanded(function(e){var n=Object.assign({},e);pageResults.forEach(function(r,idx){delete n[rowId(r,curPage*PER_PAGE+idx)];});return n;});}} />
       <div className="orn">Compendium</div>
       <div className="sh" style={{display:"flex",alignItems:"center"}}>
         <span>Compendium Search</span>
@@ -4139,15 +4126,7 @@ function CompendiumPage({onAddCreature}){
           Include SRD
         </label>}
         {srdLoading&&<span style={{fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(201,150,42,.5)",textTransform:"uppercase"}}>Searching SRD…</span>}
-        {/* Expand / collapse all on the current page */}
-        {pageResults.length>0&&(
-          <div style={{display:"flex",alignItems:"center",gap:4}}>
-            <div onClick={function(){setExpanded(function(e){var n=Object.assign({},e);pageResults.forEach(function(r,idx){n[rowId(r,curPage*PER_PAGE+idx)]=true;});return n;});}}
-              style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:9,color:"rgba(184,154,240,.55)",border:"1px solid rgba(184,154,240,.2)",padding:"2px 6px",borderRadius:2,userSelect:"none"}} title="Expand all on this page">+</div>
-            <div onClick={function(){setExpanded(function(e){var n=Object.assign({},e);pageResults.forEach(function(r,idx){delete n[rowId(r,curPage*PER_PAGE+idx)];});return n;});}}
-              style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:9,color:"rgba(184,154,240,.55)",border:"1px solid rgba(184,154,240,.2)",padding:"2px 6px",borderRadius:2,userSelect:"none"}} title="Collapse all on this page">−</div>
-          </div>
-        )}
+        {/* Expand / collapse all is handled by the far-left rail (EcRail) */}
         {/* Results per page */}
         <label style={{display:"flex",alignItems:"center",gap:5,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.5)",textTransform:"uppercase"}}>
           Per page
@@ -4170,11 +4149,7 @@ function CompendiumPage({onAddCreature}){
         )}
       </div>
 
-      {/* Results — with sticky expand/collapse rail (left gutter) */}
-      <div style={{position:"relative",paddingLeft:pageResults.length>0?38:0}}>
-      {pageResults.length>0&&<SectionRail accent="184,154,240" label="Results"
-        onExpand={function(){setExpanded(function(e){var n=Object.assign({},e);pageResults.forEach(function(r,idx){n[rowId(r,curPage*PER_PAGE+idx)]=true;});return n;});}}
-        onCollapse={function(){setExpanded(function(e){var n=Object.assign({},e);pageResults.forEach(function(r,idx){delete n[rowId(r,curPage*PER_PAGE+idx)];});return n;});}} />}
+      {/* Results */}
       <div style={{border:"1px solid rgba(201,150,42,.12)",borderRadius:2}}>
         {results.length===0&&<div style={{padding:"20px",textAlign:"center",fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.3)"}}>No matches. {kind==="spells"&&spellCache.status==="loading"?"Loading spells…":kind==="feats"&&featCache.status==="loading"?"Loading feats…":kind==="items"&&itemCache.status==="loading"?"Loading items…":kind==="exploits"&&exploitCache.status==="loading"?"Loading exploits…":kind==="creatures"&&creatureCache.status==="loading"?"Loading creatures…":kind==="creatures"&&creatureCache.status==="ready"?"No creatures found — add creatures.md or a creatures/ JSON folder to the repo.":kind==="exploits"&&exploitCache.status==="error"?"Exploits file unavailable — check exploits.md in repo.":"Try a different search."}</div>}
         {pageResults.map(function(r,idx){
@@ -4237,7 +4212,6 @@ function CompendiumPage({onAddCreature}){
             </div>
           );
         })}
-      </div>
       </div>
 
       {/* Pagination controls */}
@@ -4528,8 +4502,13 @@ function Page4({c,s}){
     {key:"nt1",label:"Session Notes",n:(c.nt1||[]).length},
     {key:"nt3",label:"Other Notes",n:(c.nt3||[]).length},
   ].concat(csList.map(function(cs){return {key:"cs:"+cs.id,label:cs.name||"Untitled",n:(cs.items||[]).length};}));
+  // Expand/collapse every entry in the currently shown section (drives the far-left rail).
+  const _curCs=sub.indexOf("cs:")===0?csList.find(function(x){return "cs:"+x.id===sub;}):null;
+  const ecAll=function(val){ if(_curCs) csSetAllDesc(_curCs.id,val); else setAllDesc(sub,val); };
+  const curCount=_curCs?(_curCs.items||[]).length:(c[sub]||[]).length;
   return (
     <div>
+      <EcRail show={curCount>0} onExpand={function(){ecAll(true);}} onCollapse={function(){ecAll(false);}} />
       <div className="orn">Notes</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:34,marginTop:14}}>
         {subTabs.map(function(t){
@@ -4557,7 +4536,7 @@ function Page4({c,s}){
         {noteSearch&&<span onClick={()=>setNoteSearch("")} title="Clear search" style={{cursor:"pointer",color:"rgba(201,74,42,.5)",fontSize:16,userSelect:"none"}}>×</span>}
       </div>
       {sub==="npc"&&<div>
-      <div className="sh">NPCs {descBtns("npc")}</div>
+      <div className="sh">NPCs</div>
       {fIdx(c.npc).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
         <div key={i} className="nc">
           <span onClick={()=>toggleDesc("npc",i)} title={open?"Hide notes":"Show notes"} style={chevSt}>{open?"▾":"▸"}</span>
@@ -4588,7 +4567,7 @@ function Page4({c,s}){
       </div>}
 
       {sub==="locations"&&<div>
-      <div className="sh">Locations {descBtns("locations")}</div>
+      <div className="sh">Locations</div>
       {fIdx(c.locations).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
         <div key={i} className="nc">
           <span onClick={()=>toggleDesc("locations",i)} title={open?"Hide notes":"Show notes"} style={chevSt}>{open?"▾":"▸"}</span>
@@ -4606,7 +4585,7 @@ function Page4({c,s}){
       </div>}
 
       {sub==="lore"&&<div>
-      <div className="sh">Lore {descBtns("lore")}</div>
+      <div className="sh">Lore</div>
       {fIdx(c.lore).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
         <div key={i} className="nc" style={{borderLeft:"3px solid rgba(201,150,42,.35)"}}>
           <span onClick={()=>toggleDesc("lore",i)} title={open?"Hide notes":"Show notes"} style={chevSt}>{open?"▾":"▸"}</span>
@@ -4623,7 +4602,7 @@ function Page4({c,s}){
       </div>}
 
       {sub==="factions"&&<div>
-      <div className="sh">Organisations {descBtns("factions")}</div>
+      <div className="sh">Organisations</div>
       {fIdx(c.factions).map(function(x){var f=x.it,i=x.i;var open=f.showDesc!==false;return (
         <div key={i} className="nc">
           <span onClick={()=>toggleDesc("factions",i)} title={open?"Hide notes":"Show notes"} style={chevSt}>{open?"▾":"▸"}</span>
@@ -4641,7 +4620,7 @@ function Page4({c,s}){
       </div>}
 
       {sub==="nt1"&&<div>
-      <div className="sh">Session Notes {descBtns("nt1")}</div>
+      <div className="sh">Session Notes</div>
       <div style={{marginBottom:6}}>
         {fIdx(c.nt1).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
           <div key={i} className="nc" style={{borderLeft:"3px solid rgba(123,79,207,.4)"}}>
@@ -4660,7 +4639,7 @@ function Page4({c,s}){
       </div>}
 
       {sub==="nt3"&&<div>
-      <div className="sh">Other Notes {descBtns("nt3")}</div>
+      <div className="sh">Other Notes</div>
       <div style={{marginBottom:6}}>
         {fIdx(c.nt3).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
           <div key={i} className="nc" style={{borderLeft:"3px solid rgba(42,140,156,.3)"}}>
@@ -4681,17 +4660,12 @@ function Page4({c,s}){
       {csList.map(function(cs){
         if(sub!=="cs:"+cs.id) return null;
         var items=cs.items||[];
-        var csDescBtns=items.length>0?<span style={{display:"inline-flex",gap:3}}>
-          <span onClick={()=>csSetAllDesc(cs.id,true)} title="Expand all" style={ecBtn}>+</span>
-          <span onClick={()=>csSetAllDesc(cs.id,false)} title="Collapse all" style={ecBtn}>−</span>
-        </span>:null;
         return <div key={cs.id}>
           <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:26,marginBottom:14}}>
             <input value={cs.name||""} onChange={e=>csUpd(cs.id,function(x){return {...x,name:e.target.value};})} placeholder="Section name..."
               style={{minWidth:140,maxWidth:"60vw",background:"transparent",border:"none",borderBottom:"1px solid rgba(201,150,42,.35)",color:"var(--gold)",fontFamily:"'Cinzel',serif",fontSize:12,fontWeight:600,letterSpacing:3,textTransform:"uppercase",outline:"none",padding:"2px 0"}} />
             <button onClick={()=>window.__confirm("Delete the whole \""+(cs.name||"Untitled")+"\" section and all its notes?",()=>csDelete(cs.id))} title="Delete this section"
               style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,textTransform:"uppercase",color:"rgba(201,74,42,.6)",background:"transparent",border:"1px solid rgba(201,74,42,.3)",padding:"2px 7px",borderRadius:2,flexShrink:0}}>Delete</button>
-            {csDescBtns}
           </div>
           {fIdx(items).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
             <div key={i} className="nc" style={{borderLeft:"3px solid rgba(184,154,240,.4)"}}>
@@ -5140,7 +5114,7 @@ function App(){
     <style>{CSS}</style>
     <div style={{maxWidth:980,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18,flexWrap:"wrap"}}>
-        <div style={{flex:1,display:"flex",alignItems:"baseline",gap:8}}><span style={{fontFamily:"'Cinzel Decorative',cursive",fontSize:18,color:GOLDL,letterSpacing:1}}>Dungeon Master Screen</span><span style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.35)"}}>v16</span></div>
+        <div style={{flex:1,display:"flex",alignItems:"baseline",gap:8}}><span style={{fontFamily:"'Cinzel Decorative',cursive",fontSize:18,color:GOLDL,letterSpacing:1}}>Dungeon Master Screen</span><span style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.35)"}}>v17</span></div>
         <div onClick={doSave} style={btn("201,150,42")} title="Save everything to a JSON file (choose location & name)">Save</div>
         <div onClick={doSaveAs} style={btn("201,150,42")} title="Save to a new file / location">Save As</div>
         <div onClick={function(){if(fileRef.current)fileRef.current.click();}} style={btn("201,150,42")} title="Load from a JSON file">Load</div>
