@@ -3651,6 +3651,8 @@ function CompendiumPage({onAddCreature}){
   const [fAttuneTag,setFAttuneTag]=us(_g("fAttuneTag",""));
   const [showGeneric,setShowGeneric]=us(_g("showGeneric",false)); // show variant/generic item parents (default off)
   const [pickedId,setPickedId]=us(null); // id of the randomly-chosen item to highlight
+  const pickedRef=React.useRef(null);    // DOM node of the currently picked row (for scroll-to)
+  const [scrollNonce,setScrollNonce]=us(0); // bumped on each random pick to trigger a scroll
   const [showQueryHelp,setShowQueryHelp]=us(false); // search-syntax help popup
   const [fPrereq,setFPrereq]=us(_g("fPrereq","any")); // any | yes | no
   const [fPrereqText,setFPrereqText]=us(_g("fPrereqText",""));
@@ -3667,7 +3669,7 @@ function CompendiumPage({onAddCreature}){
   const [fAblMax,setFAblMax]=us(_g("fAblMax","")); // ability score maximum
   const [expanded,setExpanded]=us({});
   const [page,setPage]=us(0);
-  const [pageSize,setPageSize]=us(_g("pageSize",20)); // results per page: 10/20/50/100
+  const [pageSize,setPageSize]=us(_g("pageSize",20)); // results per page: 10/20/50/100/200/500
   const [confirmAdd,setConfirmAdd]=us(null); // the result object pending confirmation
   const [crAdd,setCrAdd]=us(null); // {entry, tag, cls} pending creature add (spell-class pick for summons)
   const [addCls,setAddCls]=us(""); // selected class when adding a spell
@@ -3690,29 +3692,56 @@ function CompendiumPage({onAddCreature}){
   var CREATURE_TYPES=["aberration","beast","celestial","construct","dragon","elemental","fey","fiend","giant","humanoid","monstrosity","ooze","plant","undead"];
   var ENVIRONMENTS=["arctic","coastal","desert","forest","grassland","hill","mountain","planar","swamp","underdark","underwater","urban"];
 
-  // ── Session filter memory ──────────────────────────────────────────────────
-  // Gather every persisted filter into a plain object, restore one, and the
-  // per-list defaults. Used to remember each list's filters across tab switches.
-  function readFilters(){return {query:query,descQuery:descQuery,fLevel:fLevel,fSchool:fSchool,fClass:fClass,fCast:fCast,fRitual:fRitual,fConc:fConc,fRarity:fRarity,fAttune:fAttune,fType:fType,fAttuneTag:fAttuneTag,showGeneric:showGeneric,fPrereq:fPrereq,fPrereqText:fPrereqText,fAbilities:fAbilities,fDegree:fDegree,fExec:fExec,fExClass:fExClass,fCType:fCType,fCrMin:fCrMin,fCrMax:fCrMax,fEnv:fEnv,fAbl:fAbl,fAblMin:fAblMin,fAblMax:fAblMax,includeSrd:includeSrd,pageSize:pageSize};}
-  function defaultFilters(){return {query:"",descQuery:"",fLevel:"any",fSchool:"any",fClass:"",fCast:"any",fRitual:"any",fConc:"any",fRarity:"any",fAttune:"any",fType:"",fAttuneTag:"",showGeneric:false,fPrereq:"any",fPrereqText:"",fAbilities:[],fDegree:"any",fExec:"",fExClass:"",fCType:"any",fCrMin:"any",fCrMax:"any",fEnv:"any",fAbl:"any",fAblMin:"",fAblMax:"",includeSrd:true,pageSize:20};}
-  function applyFilters(f){f=f||{};setQuery(f.query||"");setDescQuery(f.descQuery||"");setDQuery(f.query||"");setDDescQuery(f.descQuery||"");setFLevel(f.fLevel||"any");setFSchool(f.fSchool||"any");setFClass(f.fClass||"");setFCast(f.fCast||"any");setFRitual(f.fRitual||"any");setFConc(f.fConc||"any");setFRarity(f.fRarity||"any");setFAttune(f.fAttune||"any");setFType(f.fType||"");setFAttuneTag(f.fAttuneTag||"");setShowGeneric(!!f.showGeneric);setFPrereq(f.fPrereq||"any");setFPrereqText(f.fPrereqText||"");setFAbilities(Array.isArray(f.fAbilities)?f.fAbilities:[]);setFDegree(f.fDegree||"any");setFExec(f.fExec||"");setFExClass(f.fExClass||"");setFCType(f.fCType||"any");setFCrMin(f.fCrMin||"any");setFCrMax(f.fCrMax||"any");setFEnv(f.fEnv||"any");setFAbl(f.fAbl||"any");setFAblMin(f.fAblMin||"");setFAblMax(f.fAblMax||"");setIncludeSrd(f.includeSrd!==undefined?!!f.includeSrd:true);setPageSize(f.pageSize||20);}
-  // Mirror the active list + its current filters into the session store on every
-  // change (cheap; the store is a plain in-memory object, never page number).
-  React.useEffect(function(){_cmpSession.kind=kind;_cmpSession.byKind[kind]=readFilters();});
+  // ── Session-only per-list memory (filters / search / pagination) ─────────────
+  // Every persisted piece of state as [name, value, setter, default]. This single
+  // table drives session memory, the page-reset signature, and the Clear button.
+  const _FIELDS=[
+    ["query",query,setQuery,""],["descQuery",descQuery,setDescQuery,""],
+    ["dQuery",dQuery,setDQuery,""],["dDescQuery",dDescQuery,setDDescQuery,""],
+    ["fLevel",fLevel,setFLevel,"any"],["fSchool",fSchool,setFSchool,"any"],
+    ["fClass",fClass,setFClass,""],["fCast",fCast,setFCast,"any"],
+    ["fRitual",fRitual,setFRitual,"any"],["fConc",fConc,setFConc,"any"],
+    ["fRarity",fRarity,setFRarity,"any"],["fAttune",fAttune,setFAttune,"any"],
+    ["fType",fType,setFType,""],["fAttuneTag",fAttuneTag,setFAttuneTag,""],
+    ["showGeneric",showGeneric,setShowGeneric,false],
+    ["fPrereq",fPrereq,setFPrereq,"any"],["fPrereqText",fPrereqText,setFPrereqText,""],
+    ["fAbilities",fAbilities,setFAbilities,[]],
+    ["fDegree",fDegree,setFDegree,"any"],["fExec",fExec,setFExec,""],["fExClass",fExClass,setFExClass,""],
+    ["fCType",fCType,setFCType,"any"],["fCrMin",fCrMin,setFCrMin,"any"],["fCrMax",fCrMax,setFCrMax,"any"],
+    ["fEnv",fEnv,setFEnv,"any"],["fAbl",fAbl,setFAbl,"any"],["fAblMin",fAblMin,setFAblMin,""],["fAblMax",fAblMax,setFAblMax,""],
+    ["includeSrd",includeSrd,setIncludeSrd,true],
+    ["pageSize",pageSize,setPageSize,20]
+  ];
+  const _KEEP_ON_CLEAR={pageSize:1,includeSrd:1};   // view prefs the Clear button keeps
+  const _SIG_SKIP={page:1,dQuery:1,dDescQuery:1};    // excluded from the page-reset signature
+  function _snap(){var o={};_FIELDS.forEach(function(f){o[f[0]]=f[1];});return o;}
+  function _applyFields(st){_FIELDS.forEach(function(f){var v=(st&&(f[0] in st))?st[f[0]]:f[3];f[2](v);});}
+  function _sigFrom(vals,k){var o={__k:k};_FIELDS.forEach(function(f){if(!_SIG_SKIP[f[0]])o[f[0]]=(vals&&(f[0] in vals))?vals[f[0]]:f[3];});return JSON.stringify(o);}
+  const _sig=_sigFrom(_snap(),kind);
+  const lastSigRef=React.useRef(undefined);
+  // Persist this list's state to session memory whenever it changes.
+  React.useEffect(function(){_cmpSession.kind=kind;_cmpSession.byKind[kind]=_snap();},[_sig,page,dQuery,dDescQuery]);
+  // Whether this list currently has any non-default filter/search applied.
+  const hasActiveFilters=_FIELDS.some(function(f){return !_KEEP_ON_CLEAR[f[0]]&&f[0]!=="dQuery"&&f[0]!=="dDescQuery"&&JSON.stringify(f[1])!==JSON.stringify(f[3]);});
+  // Clear just THIS list's filters/search (per-list, not global). Page resets via the signature effect.
+  function clearFilters(){_FIELDS.forEach(function(f){if(!_KEEP_ON_CLEAR[f[0]])f[2](f[3]);});}
 
-  // Switch list: stash the current list's filters, then load the target list's
-  // remembered filters (or its defaults the first time it's opened this session).
+  // Switch list, restoring that list's remembered filters/search. The page is
+  // intentionally NOT remembered — every list opens on page 1.
   function switchKind(k){
-    _cmpSession.byKind[kind]=readFilters();
-    _cmpSession.kind=k;
-    var saved=_cmpSession.byKind[k];
+    var st=_cmpSession.byKind[k]||null;
     setKind(k);
-    applyFilters(saved||defaultFilters());
-    setExpanded({});setSrdResults([]);setPage(0);setPickedId(null);
+    _applyFields(st);
+    setExpanded({});
+    setSrdResults([]);
+    setPickedId(null);
+    setPage(0);
   }
-
-  // Reset to first page whenever a search or filter changes
-  React.useEffect(function(){setPage(0);setPickedId(null);},[query,descQuery,fLevel,fSchool,fClass,fCast,fRitual,fConc,fRarity,fAttune,fType,fAttuneTag,fPrereq,fPrereqText,fAbilities,fDegree,fExec,fExClass,fCType,fCrMin,fCrMax,fEnv,fAbl,fAblMin,fAblMax,includeSrd,kind,showGeneric,pageSize]);
+  // Reset to page 1 (and clear any random pick) whenever the filter signature changes.
+  React.useEffect(function(){
+    if(lastSigRef.current===undefined){lastSigRef.current=_sig;return;}
+    if(lastSigRef.current!==_sig){lastSigRef.current=_sig;setPage(0);setPickedId(null);}
+  },[_sig]);
 
   // SRD fetch (debounced) — only when there's a query
   React.useEffect(function(){
@@ -3829,16 +3858,25 @@ function CompendiumPage({onAddCreature}){
   // render loop below so expand/highlight state lines up).
   function rowId(r,i){return r.src+"-"+(r.srdVer||"")+"-"+r.name+"-"+i;}
   // Pick one item at random from the currently-shown (filtered) results, jump to
-  // its page, expand it, and highlight it. Uses `results` (all pages), not just
-  // the current page, so it honours every active filter and search term.
+  // its page, close the previously-picked item, open and highlight the new one, and
+  // scroll it into view. Uses `results` (all pages), so it honours every filter.
   function chooseRandomItem(){
     if(!results.length) return;
     var i=Math.floor(Math.random()*results.length);
     var id=rowId(results[i],i);
+    var prev=pickedId;
     setPage(Math.floor(i/PER_PAGE));
+    setExpanded(function(e){var n=Object.assign({},e); if(prev&&prev!==id) delete n[prev]; n[id]=true; return n;});
     setPickedId(id);
-    setExpanded(function(e){var n=Object.assign({},e);n[id]=true;return n;});
+    setScrollNonce(function(x){return x+1;});
   }
+  // After a random pick lands (page/row committed), scroll the chosen row into view.
+  React.useEffect(function(){
+    if(scrollNonce>0&&pickedRef.current){
+      try{pickedRef.current.scrollIntoView({behavior:"smooth",block:"center"});}
+      catch(e){try{pickedRef.current.scrollIntoView();}catch(_){}}
+    }
+  },[scrollNonce]);
 
   var SCHOOLS=["Abjuration","Conjuration","Divination","Enchantment","Evocation","Illusion","Necromancy","Transmutation"];
   var inputStyle={background:"rgba(0,0,0,.3)",border:"1px solid rgba(201,150,42,.2)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:13,outline:"none",padding:"5px 8px",borderRadius:2};
@@ -3991,6 +4029,14 @@ function CompendiumPage({onAddCreature}){
         <div onClick={function(){setShowQueryHelp(function(v){return !v;});}}
           title="How to write complex search queries"
           style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:"1px solid rgba(123,79,207,.5)",color:"var(--arcane)",background:showQueryHelp?"rgba(123,79,207,.2)":"rgba(123,79,207,.08)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'EB Garamond',serif",fontSize:14,fontStyle:"italic",fontWeight:700,userSelect:"none"}}>i</div>
+        <div onClick={function(){if(hasActiveFilters)clearFilters();}}
+          title="Clear this list's filters and search"
+          style={{flexShrink:0,cursor:hasActiveFilters?"pointer":"default",opacity:hasActiveFilters?1:.4,
+            fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",
+            border:"1px solid rgba(201,74,42,.45)",color:"#e07060",background:"rgba(201,74,42,.1)",
+            padding:"5px 10px",borderRadius:2,userSelect:"none",whiteSpace:"nowrap"}}>
+          ✕ Clear filters
+        </div>
         {showQueryHelp&&(
           <div style={{position:"absolute",top:"100%",right:0,marginTop:6,zIndex:300,width:"min(420px,92vw)",background:"#1a1410",border:"1px solid rgba(123,79,207,.4)",borderRadius:3,padding:"14px 16px",boxShadow:"0 6px 28px rgba(0,0,0,.6)"}}>
             <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:8}}>
@@ -4131,7 +4177,7 @@ function CompendiumPage({onAddCreature}){
         <label style={{display:"flex",alignItems:"center",gap:5,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.5)",textTransform:"uppercase"}}>
           Per page
           <select value={""+pageSize} onChange={function(e){setPageSize(parseInt(e.target.value));}} style={Object.assign({},selStyle,{padding:"2px 6px",fontSize:11})}>
-            {[10,20,50,100].map(function(n){return <option key={n} value={""+n}>{n}</option>;})}
+            {[10,20,50,100,200,500].map(function(n){return <option key={n} value={""+n}>{n}</option>;})}
           </select>
         </label>
         <span style={{marginLeft:"auto",fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.35)"}}>{totalResults} result{totalResults===1?"":"s"}{totalPages>1?" · showing "+(curPage*PER_PAGE+1)+"–"+Math.min(curPage*PER_PAGE+PER_PAGE,totalResults):""}</span>
@@ -4166,7 +4212,7 @@ function CompendiumPage({onAddCreature}){
           var tag=r.source?r.source:(isLocal?"File":("SRD"+(r.srdVer||"")));
           var tagCol=isLocal?"rgba(74,156,92,.6)":"rgba(96,180,196,.55)";
           return (
-            <div key={id} style={{borderBottom:"1px solid rgba(201,150,42,.07)",background:isPicked?"rgba(201,150,42,.10)":"transparent",boxShadow:isPicked?"inset 3px 0 0 var(--gold)":"none"}}>
+            <div key={id} ref={isPicked?pickedRef:null} style={{borderBottom:"1px solid rgba(201,150,42,.07)",background:isPicked?"rgba(201,150,42,.10)":"transparent",boxShadow:isPicked?"inset 3px 0 0 var(--gold)":"none"}}>
               <div onClick={function(){toggle(id);}} style={{display:"flex",alignItems:"baseline",gap:10,padding:"8px 12px",cursor:"pointer"}}>
                 <span style={{fontFamily:"'Cinzel',serif",fontSize:10,color:"rgba(201,150,42,.4)",width:12,flexShrink:0}}>{isOpen?"−":"+"}</span>
                 <span style={{fontFamily:"'EB Garamond',serif",fontSize:14,color:"var(--gold-l)",fontWeight:600,flex:1}}>{r.name}</span>
@@ -5114,7 +5160,7 @@ function App(){
     <style>{CSS}</style>
     <div style={{maxWidth:980,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18,flexWrap:"wrap"}}>
-        <div style={{flex:1,display:"flex",alignItems:"baseline",gap:8}}><span style={{fontFamily:"'Cinzel Decorative',cursive",fontSize:18,color:GOLDL,letterSpacing:1}}>Dungeon Master Screen</span><span style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.35)"}}>v17</span></div>
+        <div style={{flex:1,display:"flex",alignItems:"baseline",gap:8}}><span style={{fontFamily:"'Cinzel Decorative',cursive",fontSize:18,color:GOLDL,letterSpacing:1}}>Dungeon Master Screen</span><span style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.35)"}}>v19</span></div>
         <div onClick={doSave} style={btn("201,150,42")} title="Save everything to a JSON file (choose location & name)">Save</div>
         <div onClick={doSaveAs} style={btn("201,150,42")} title="Save to a new file / location">Save As</div>
         <div onClick={function(){if(fileRef.current)fileRef.current.click();}} style={btn("201,150,42")} title="Load from a JSON file">Load</div>
