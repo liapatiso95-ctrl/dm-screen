@@ -3819,7 +3819,7 @@ function CompendiumPage({onAddCreature}){
       if(fRarity==="__mundane"){ if((r.rarity||"").trim()) return false; }
       else if(fRarity!=="any"&&(r.rarity||"").toLowerCase()!==fRarity.toLowerCase()) return false;
       if(fAttune==="yes"&&r.attune!==true) return false;
-      if(fAttune==="no"&&r.attune!==false) return false;
+      if(fAttune==="no"&&r.attune===true) return false;
       if(fType.trim()&&!matchQuery(r.type,fType)) return false;
       if(fAttuneTag.trim()&&!matchQuery(r.attuneTag,fAttuneTag)) return false;
     }
