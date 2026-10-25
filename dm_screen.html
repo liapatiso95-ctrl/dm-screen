@@ -2870,7 +2870,7 @@ function mdBuildAction(name,body,dcSink){
   }
   // Save DC -> add a custom flat DC to the creature (handles both 2014 "DC 15 Dexterity saving throw" and 2024 "Dexterity Saving Throw: DC 15")
   var dc=txt.match(/DC\s*(\d+)\s+([A-Za-z]+)\s+saving throw/i);
-  if(!dc){var dc2=txt.match(/([A-Za-z]+)\s+saving throw:?\s*DC\s*(\d+)/i); if(dc2) dc=[dc2[0],dc2[2],dc2[1]];}
+  if(!dc){var dc2=txt.match(/([A-Za-z]+)\s+saving throw:?\*?\s*DC\s*(\d+)/i); if(dc2) dc=[dc2[0],dc2[2],dc2[1]];}
   if(dc&&dcSink){
     dcSink.push({nm:name+(dc[2]?" ("+dc[2].slice(0,3)+")":""),sourceType:"custom",sourceIdx:0,customFormula:mkFlat(parseInt(dc[1]))});
   }
@@ -3520,6 +3520,27 @@ function loadCreatureFolder(onDone){
     .catch(function(){})
     .finally(function(){if(onDone)onDone();});
 }
+// Normalise a 2024-style Homebrewery statblock (**AC** ::, 12-column ability table, **CR**, PB) into the labels cmpParseStatblock expects.
+function normalize2024Block(b){
+  b=b.replace(/\*\*AC\*\*\s*::/,"**Armor Class** ::")
+     .replace(/\*\*HP\*\*\s*::/,"**Hit Points** ::")
+     .replace(/\*\*Resistances\*\*/,"**Damage Resistances**")
+     .replace(/\*\*Immunities\*\*/,"**Damage Immunities**")
+     .replace(/\*\*Vulnerabilities\*\*/,"**Damage Vulnerabilities**")
+     .replace(/\*\*CR\*\*(\s*::)/,"**Challenge**$1")
+     .replace(/\bPB\s*([+-]\d+)/,"Proficiency Bonus $1");
+  var A=["STR","DEX","CON","INT","WIS","CHA"],sc={},sv={},m;
+  var re=/\|\s*(Str|Dex|Con|Int|Wis|Cha)\s*\|\s*(\d+)\s*\|\s*[+\-\u2013]+\d+\s*\|\s*([+\-\u2013]+\d+)\s*(?=\|)/gi;
+  while((m=re.exec(b))){var k=m[1].toUpperCase();sc[k]=+m[2];sv[k]=parseInt(m[3].replace(/[\u2013-]+/,"-"));}
+  if(Object.keys(sc).length===6){
+    var mod=function(v){return Math.floor((v-10)/2);};
+    var f=function(n){return (n>=0?"+":"")+n;};
+    var tbl="|STR|DEX|CON|INT|WIS|CHA|\n|:-:|:-:|:-:|:-:|:-:|:-:|\n|"+A.map(function(k){return sc[k]+" ("+f(mod(sc[k]))+")";}).join("|")+"|";
+    var prof=A.filter(function(k){return sv[k]!==mod(sc[k]);}).map(function(k){return k+" "+f(sv[k]);}).join(", ");
+    b=b.replace(/^\|[^\n]*MOD[^\n]*\n\|[:\-| ]+\n(\|[^\n]*\n?){2,}/m,function(){return tbl+"\n"+(prof?"**Saving Throws** :: "+prof+"\n":"");});
+  }
+  return b;
+}
 // Parse a creatures.md file (multiple GMBinder statblocks) into compendium entries.
 function parseCreaturesMd(text){
   var out={};
@@ -3534,11 +3555,14 @@ function parseCreaturesMd(text){
     var nm=(lines[heads[h]].match(/#{1,2}\s+(.+?)\s*#*\s*$/)||[])[1];
     if(!nm) continue; nm=nm.replace(/^\s*>?\s*/,"").trim();
     try{
-      var creature=cmpParseStatblock(block,"Companion");creature.nm=nm;
+      var cleaned=block.split(/^\*\*(?:Loot|Lore|Ecology|Tactics)\.\*\*/m)[0].replace(/^\\page\s*$/gm,"");
+      var creature=cmpParseStatblock(normalize2024Block(cleaned),"Companion");creature.nm=nm;
+      var crm=block.match(/\*\*CR\*\*\s*::\s*([\d\/]+)/);
       var disp=block.replace(/^[ \t]*>+[ \t]?/gm,"").replace(/^\s*#{1,2}\s+.+\n/,"")
+        .replace(/^\\page\s*$/gm,"").replace(/--(\d)/g,"\u2212$1")
         .replace(/(\*\*[^*\n]+\*\*)\s*::\s*/g,"$1 ")  // GMBinder label separator
-        .replace(/\{\{\s*bonus\s+/gi,"").replace(/\{\{/g,"").replace(/\}\}/g,""); // GMBinder inline blocks
-      if(!out[nm]) out[nm]={name:nm,src:"file",desc:disp,creature:creature,cr:"",size:creature.size,ctype:creature.subtype,_kind:"creature"};
+        .replace(/\{\{\s*bonus\s+/gi,"").replace(/^[ \t]*\{\{[^\n]*$/gm,"").replace(/\}\}/g,""); // GMBinder inline blocks
+      if(!out[nm]) out[nm]={name:nm,src:"file",desc:disp,creature:creature,cr:crm?crm[1]:"",size:creature.size,ctype:creature.subtype,_kind:"creature"};
     }catch(e){}
   }
   return out;
@@ -3555,7 +3579,7 @@ function parseCreaturesFromText(text){
   if(keys.length){ keys.forEach(function(k){out.push(md[k]);}); return out; }
   if(/\*\*\s*Armor Class\s*\*\*/i.test(text)||/\|\s*>?\s*STR\b/i.test(text)){
     try{
-      var creature=cmpParseStatblock(text,"Companion");
+      var creature=cmpParseStatblock(normalize2024Block(text),"Companion");
       var nm=(creature.nm&&creature.nm.trim())||"Creature";
       if(/^(Actions|Reactions|Bonus Actions|Legendary Actions|Mythic Actions|Lair Actions)$/i.test(nm))nm="Creature";
       creature.nm=nm;
