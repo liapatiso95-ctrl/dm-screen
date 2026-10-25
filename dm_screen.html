@@ -4952,8 +4952,10 @@ function CombatTracker({combat,setCombat,setLightbox,onAddCreature}){
       return Object.assign({},p,{combatants:combatants,turnId:nextC.id,round:round,started:true});
     });
   };
+  const fullHealAll=function(){window.__confirm("Restore every combatant to full HP?",function(){setCombat(function(p){return Object.assign({},p,{combatants:(p.combatants||[]).map(function(c){return c.maxHp?Object.assign({},c,{hp:c.maxHp}):c;})});});},"Full HP");};
   const addPC=function(pc){setCombat(function(p){return Object.assign({},p,{combatants:[...(p.combatants||[]),pc]});});};
-  return <div style={{maxWidth:780,margin:"0 auto"}}>
+  const openSbs=order.filter(function(c){return c.expanded&&c.statblockMd;});
+  return <div style={{maxWidth:1500,margin:"0 auto",paddingRight:openSbs.length?"min(640px,52vw)":0,transition:"padding .2s"}}>
     {(combat.combatants||[]).some(function(c){return c.statblockMd;})&&<div style={{position:"fixed",left:6,top:"50%",transform:"translateY(-50%)",zIndex:90,display:"flex",flexDirection:"column",gap:6}}>
       <div onClick={function(){setAllExpanded(true);}} title="Expand all statblocks" style={{cursor:"pointer",userSelect:"none",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Cinzel',serif",fontSize:18,color:GOLDL,background:"rgba(28,21,16,.92)",border:"1px solid rgba(201,150,42,.5)",borderRadius:4,boxShadow:"0 2px 8px rgba(0,0,0,.5)"}}>+</div>
       <div onClick={function(){setAllExpanded(false);}} title="Collapse all statblocks" style={{cursor:"pointer",userSelect:"none",width:30,height:30,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Cinzel',serif",fontSize:18,color:GOLDL,background:"rgba(28,21,16,.92)",border:"1px solid rgba(201,150,42,.5)",borderRadius:4,boxShadow:"0 2px 8px rgba(0,0,0,.5)"}}>−</div>
@@ -4963,11 +4965,24 @@ function CombatTracker({combat,setCombat,setLightbox,onAddCreature}){
       <div onClick={nextTurn} style={Object.assign(btn("123,79,207"),{fontSize:11,padding:"8px 16px"})}>▶ Next Turn</div>
       <div onClick={combat.started?resetCombat:startCombat} style={btn(combat.started?"201,74,42":"74,156,92")}>{combat.started?"Reset":"Start"}</div>
       <div style={{flex:1}}/>
+      <div onClick={fullHealAll} style={btn("74,156,92")} title="Set every combatant's current HP to its max">♥ Full HP</div>
       <div onClick={rollCreatures} style={btn("201,150,42")} title="Roll d20 + DEX for every creature">⚄ Roll Creatures</div>
       <div onClick={rollAll} style={btn("201,150,42")} title="Roll initiative for everyone">⚄ Roll All</div>
     </div>
     {order.length===0&&<div style={{textAlign:"center",padding:"30px 0",fontFamily:"'EB Garamond',serif",fontStyle:"italic",color:"rgba(232,213,176,.4)"}}>No combatants yet. Add PCs or paste a creature's Markdown below, or add creatures from the Compendium tab.</div>}
-    {order.map(function(c){return <CombatRow key={c.id} c={c} isTurn={combat.started&&combat.turnId===c.id} upd={upd} remove={remove} setLightbox={setLightbox} onOpenRoller={openRoller}/>;})}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:10,alignItems:"start"}}>
+      {order.map(function(c){return <CombatRow key={c.id} c={c} isTurn={combat.started&&combat.turnId===c.id} upd={upd} remove={remove} setLightbox={setLightbox} onOpenRoller={openRoller}/>;})}
+    </div>
+    {openSbs.length>0&&<div style={{position:"fixed",top:0,right:0,bottom:0,width:"min(620px,50vw)",zIndex:80,overflowY:"auto",background:"#140f0b",borderLeft:"1px solid rgba(201,150,42,.35)",boxShadow:"-8px 0 24px rgba(0,0,0,.5)",padding:"12px 14px"}}>
+      {openSbs.map(function(c){return <div key={c.id} style={{marginBottom:18,paddingBottom:12,borderBottom:"1px solid rgba(201,150,42,.2)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+          <div style={{flex:1,fontFamily:"'Cinzel',serif",fontSize:15,color:GOLDL}}>{c.name}</div>
+          <div onClick={function(){upd(c.id,{expanded:false});}} title="Close statblock" style={{cursor:"pointer",color:"rgba(232,213,176,.5)",fontSize:18,userSelect:"none",padding:"0 4px"}}>✕</div>
+        </div>
+        {c.images&&c.images.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8}}>{c.images.map(function(g,i){return <FluffImg key={i} urls={g} onZoom={setLightbox}/>;})}</div>}
+        <div style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.85)",lineHeight:1.6}}><Markdown text={c.statblockMd}/></div>
+      </div>;})}
+    </div>}
     <AddPCForm onAdd={addPC}/>
     <AddCreatureMdForm onAdd={onAddCreature}/>
     <div style={{marginTop:18,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -5015,29 +5030,31 @@ function CombatRow({c,isTurn,upd,remove,setLightbox,onOpenRoller}){
   const applyDmg=function(sign){var n=parseInt(dmg);if(isNaN(n))return;upd(c.id,function(p){return {hp:Math.max(0,Math.min(p.maxHp||9999,(p.hp||0)+sign*n))};});setDmg("");};
   const hpPct=c.maxHp?Math.max(0,Math.min(100,Math.round(100*(c.hp||0)/c.maxHp))):100;
   const hpColor=hpPct>50?GRN:hpPct>25?"#c9a02a":RED;
-  return <div style={{marginBottom:8,border:"1px solid rgba("+accent+",."+(isTurn?"7":"25")+")",borderRadius:4,background:isTurn?"rgba("+accent+",.12)":"rgba(0,0,0,.18)",boxShadow:isTurn?"0 0 0 1px rgba("+accent+",.4)":"none"}}>
-    <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",flexWrap:"wrap"}}>
+  return <div style={{border:"1px solid rgba("+accent+",."+(isTurn?"7":"25")+")",borderRadius:4,background:isTurn?"rgba("+accent+",.12)":"rgba(0,0,0,.18)",boxShadow:isTurn?"0 0 0 1px rgba("+accent+",.4)":"none",minWidth:0}}>
+    <div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 10px 4px"}}>
       <input value={c.init==null?"":c.init} onChange={function(e){var v=e.target.value;upd(c.id,{init:v===""?null:parseInt(v)||0});}} placeholder="–" title="Initiative" style={Object.assign({},inp,{width:34,textAlign:"center",fontFamily:"'Cinzel',serif",fontSize:15,color:GOLDL,padding:"4px 2px"})}/>
       {isTurn&&<span style={{color:GOLDL,fontSize:13}}>▶</span>}
-      <input value={c.name} onChange={function(e){upd(c.id,{name:e.target.value});}} title="Name (editable)" style={Object.assign({},inp,{flex:1,minWidth:110,fontFamily:"'Cinzel',serif",fontSize:14,color:isTurn?GOLDL:PARCH,border:"1px solid transparent",background:"transparent",padding:"3px 4px"})}/>
-      {c.statblockMd&&<div onClick={function(){upd(c.id,function(p){return {expanded:!p.expanded};});}} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",color:"rgba(232,213,176,.45)",userSelect:"none"}}>{c.expanded?"▲ statblock":"▼ statblock"}</div>}
+      <input value={c.name} onChange={function(e){upd(c.id,{name:e.target.value});}} title="Name (editable)" style={Object.assign({},inp,{flex:1,minWidth:0,fontFamily:"'Cinzel',serif",fontSize:14,color:isTurn?GOLDL:PARCH,border:"1px solid transparent",background:"transparent",padding:"3px 4px"})}/>
+      {c.statblockMd&&<div onClick={function(){upd(c.id,function(p){return {expanded:!p.expanded};});}} title={c.expanded?"Close statblock":"Open statblock"} style={{cursor:"pointer",fontSize:15,userSelect:"none",padding:"0 2px",opacity:c.expanded?1:.6}}>📖</div>}
+      <div onClick={function(){upd(c.id,function(p){return {notesOpen:!p.notesOpen};});}} title="Notes" style={{cursor:"pointer",fontSize:14,userSelect:"none",padding:"0 2px",opacity:(c.notes&&c.notes.trim())?1:.55}}>📝</div>
+      <div onClick={function(){onOpenRoller(c.id);}} title="Dice roller" style={{cursor:"pointer",fontSize:15,userSelect:"none",padding:"0 2px"}}>🎲</div>
+      <div onClick={function(){window.__confirm("Remove "+(c.name||"this combatant")+" from combat?",function(){remove(c.id);});}} title="Remove" style={{cursor:"pointer",color:"rgba(232,213,176,.35)",fontSize:15,userSelect:"none",padding:"0 2px"}}>✕</div>
+    </div>
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"2px 10px 8px",flexWrap:"wrap"}}>
       <div title="Armor Class" style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.7)"}}>🛡 <input value={c.ac==null?"":c.ac} onChange={function(e){upd(c.id,{ac:parseInt(e.target.value)||0});}} style={Object.assign({},inp,{width:34,textAlign:"center",padding:"3px 2px"})}/></div>
       <div style={{display:"flex",alignItems:"center",gap:4}}>
         <input value={c.hp==null?"":c.hp} onChange={function(e){upd(c.id,{hp:parseInt(e.target.value)||0});}} title="Current HP" style={Object.assign({},inp,{width:42,textAlign:"center",color:hpColor,fontWeight:600,padding:"3px 2px"})}/>
         <span style={{color:"rgba(232,213,176,.4)",fontSize:12}}>/</span>
         <input value={c.maxHp==null?"":c.maxHp} onChange={function(e){upd(c.id,{maxHp:parseInt(e.target.value)||0});}} title="Max HP" style={Object.assign({},inp,{width:42,textAlign:"center",padding:"3px 2px"})}/>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:3}}>
+      <div style={{display:"flex",alignItems:"center",gap:3,marginLeft:"auto"}}>
         <input value={dmg} onChange={function(e){setDmg(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")applyDmg(-1);}} placeholder="#" style={Object.assign({},inp,{width:38,textAlign:"center",padding:"3px 2px"})}/>
         <div onClick={function(){applyDmg(-1);}} title="Damage" style={{cursor:"pointer",color:"#e07060",border:"1px solid rgba(201,74,42,.4)",borderRadius:2,padding:"2px 7px",fontSize:13,userSelect:"none"}}>−</div>
         <div onClick={function(){applyDmg(1);}} title="Heal" style={{cursor:"pointer",color:"#7cc98a",border:"1px solid rgba(74,156,92,.4)",borderRadius:2,padding:"2px 7px",fontSize:13,userSelect:"none"}}>+</div>
       </div>
-      <div onClick={function(){upd(c.id,function(p){return {notesOpen:!p.notesOpen};});}} title="Notes" style={{cursor:"pointer",fontSize:14,userSelect:"none",padding:"0 2px",opacity:(c.notes&&c.notes.trim())?1:.55}}>📝</div>
-      <div onClick={function(){onOpenRoller(c.id);}} title="Dice roller" style={{cursor:"pointer",fontSize:15,userSelect:"none",padding:"0 2px"}}>🎲</div>
-      <div onClick={function(){window.__confirm("Remove "+(c.name||"this combatant")+" from combat?",function(){remove(c.id);});}} title="Remove" style={{cursor:"pointer",color:"rgba(232,213,176,.35)",fontSize:15,userSelect:"none",padding:"0 2px"}}>✕</div>
     </div>
     <div style={{height:3,background:"rgba(0,0,0,.4)",margin:"0 12px",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:hpPct+"%",background:hpColor,transition:"width .2s"}}/></div>
-    <div style={{padding:"8px 12px 4px"}}>
+    <div style={{padding:"8px 10px 4px"}}>
       <div style={{...lbl,fontSize:8,marginBottom:4,color:"rgba(232,213,176,.35)"}}>Conditions</div>
       <TimerChips list={c.conditions} color="201,150,42" placeholder="+ condition" dataList="cond-list"
         onAdd={function(x){upd(c.id,function(p){return {conditions:[...(p.conditions||[]),x]};});}}
@@ -5049,10 +5066,6 @@ function CombatRow({c,isTurn,upd,remove,setLightbox,onOpenRoller}){
         onAdd={function(x){upd(c.id,function(p){return {spells:[...(p.spells||[]),x]};});}}
         onDel={function(id){upd(c.id,function(p){return {spells:(p.spells||[]).filter(function(z){return z.id!==id;})};});}}/>
     </div>
-    {c.expanded&&c.statblockMd&&<div style={{borderTop:"1px solid rgba("+accent+",.2)",padding:"10px 14px",background:"rgba(0,0,0,.2)"}}>
-      {c.images&&c.images.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8}}>{c.images.map(function(g,i){return <FluffImg key={i} urls={g} onZoom={setLightbox}/>;})}</div>}
-      <div style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.85)",lineHeight:1.6}}><Markdown text={c.statblockMd}/></div>
-    </div>}
     {c.notesOpen&&<div style={{borderTop:"1px solid rgba("+accent+",.2)",padding:"10px 14px",background:"rgba(0,0,0,.15)"}}>
       <div style={{...lbl,fontSize:8,marginBottom:6,color:"rgba(232,213,176,.4)"}}>Notes (markdown)</div>
       <div style={{fontFamily:"'EB Garamond',serif",fontSize:14,color:"rgba(232,213,176,.9)",lineHeight:1.6}}>
@@ -5208,6 +5221,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.1.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
