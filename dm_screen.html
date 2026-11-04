@@ -5126,12 +5126,83 @@ function AddCreatureMdForm({onAdd}){
 }
 
 // ─── App shell ────────────────────────────────────────────────────────────────
+// ─── Tool tabs (Skill Challenges / Complex Traps / Trap Ledger) ────────────
+// The three trackers live as standalone html files in the repo (dm/ folder) and are
+// loaded here. The party's HP is shared: the strip above them edits the same combatants
+// as the Combat tab, so HP stays in sync everywhere.
+const DM_TOOLS_BASE=CREATURE_MD_URL.replace(/creatures\.md$/,"dm/");
+const DM_TOOLS=[
+  {id:"skills",label:"Skill Challenges",file:"skill-challenges.html",col:"201,74,42"},
+  {id:"traps",label:"Complex Traps",file:"complex-traps.html",col:"201,150,42"},
+  {id:"ledger",label:"Trap Ledger",file:"trap-ledger.html",col:"74,156,92"}
+];
+function PcHpBox({c,upd}){
+  const [d,setD]=useState("");
+  const pct=c.maxHp?Math.max(0,Math.min(100,Math.round(100*(c.hp||0)/c.maxHp))):100;
+  const col=pct>50?GRN:pct>25?"#c9a02a":RED;
+  const apply=function(sign){var n=parseInt(d);if(isNaN(n))return;upd(c.id,function(p){return {hp:Math.max(0,Math.min(p.maxHp||9999,(p.hp||0)+sign*n))};});setD("");};
+  return <div style={{minWidth:190,flex:"1 1 190px",maxWidth:280,border:"1px solid rgba(74,156,92,.3)",borderRadius:4,background:"rgba(0,0,0,.22)",padding:"6px 8px"}}>
+    <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <span style={{flex:1,minWidth:0,fontFamily:"'Cinzel',serif",fontSize:13,color:PARCH,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name||"?"}</span>
+      <span style={{fontSize:13,color:"#e07060"}}>♥</span>
+      <input value={c.hp==null?"":c.hp} onChange={function(e){upd(c.id,{hp:parseInt(e.target.value)||0});}} title="Current HP" style={Object.assign({},inp,{width:40,textAlign:"center",color:col,fontWeight:600,padding:"2px"})}/>
+      <span style={{color:"rgba(232,213,176,.4)",fontSize:12}}>/ {c.maxHp||"–"}</span>
+    </div>
+    <div style={{height:3,background:"rgba(0,0,0,.4)",margin:"5px 0",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:col,transition:"width .2s"}}/></div>
+    <div style={{display:"flex",alignItems:"center",gap:3}}>
+      <span style={{fontSize:13,color:"#c9a02a"}}>⚡</span>
+      <input value={d} onChange={function(e){setD(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")apply(-1);}} placeholder="#" style={Object.assign({},inp,{width:44,textAlign:"center",padding:"2px"})}/>
+      <div onClick={function(){apply(-1);}} title="Damage" style={{cursor:"pointer",color:"#e07060",border:"1px solid rgba(201,74,42,.4)",borderRadius:2,padding:"1px 8px",fontSize:13,userSelect:"none"}}>−</div>
+      <div onClick={function(){apply(1);}} title="Heal" style={{cursor:"pointer",color:"#7cc98a",border:"1px solid rgba(74,156,92,.4)",borderRadius:2,padding:"1px 8px",fontSize:13,userSelect:"none"}}>+</div>
+      <div style={{flex:1}}/>
+      <div onClick={function(){if(c.maxHp)upd(c.id,{hp:c.maxHp});}} title="Full HP" style={{cursor:"pointer",color:"#7cc98a",fontSize:12,userSelect:"none"}}>full</div>
+    </div>
+  </div>;
+}
+function PartyHpStrip({combat,setCombat}){
+  const pcs=(combat.combatants||[]).filter(function(c){return c.type==="pc";});
+  const upd=function(id,patch){setCombat(function(p){return Object.assign({},p,{combatants:(p.combatants||[]).map(function(c){return c.id===id?Object.assign({},c,typeof patch==="function"?patch(c):patch):c;})});});};
+  return <div style={{position:"sticky",top:0,zIndex:60,marginBottom:10,padding:"8px 10px",background:"#140f0b",border:"1px solid rgba(74,156,92,.35)",borderRadius:4,display:"flex",gap:8,flexWrap:"wrap",alignItems:"stretch"}}>
+    {pcs.length===0&&<div style={{fontFamily:"'EB Garamond',serif",fontStyle:"italic",fontSize:13,color:"rgba(232,213,176,.5)",padding:"6px 4px"}}>No player characters yet. Add them in the Combat tab and their HP will show here.</div>}
+    {pcs.map(function(c){return <PcHpBox key={c.id} c={c} upd={upd}/>;})}
+  </div>;
+}
+function dmPostParty(frame){
+  try{if(frame&&frame.contentWindow)frame.contentWindow.postMessage({dm:"party",pcs:JSON.parse(window.__dmPcs||"[]")},"*");}catch(e){}
+}
+function ToolFrame({tool,active}){
+  const [html,setHtml]=useState(null);
+  const [err,setErr]=useState("");
+  const seen=useRef(false);
+  if(active)seen.current=true;
+  const load=function(){
+    setErr("");setHtml(null);
+    var key="dm_tool_"+tool.file;
+    fetch(DM_TOOLS_BASE+tool.file,{cache:"no-cache"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.text();})
+      .then(function(t){setHtml(t);try{localStorage.setItem(key,t);}catch(e){}})
+      .catch(function(e){var c=null;try{c=localStorage.getItem(key);}catch(x){}if(c){setHtml(c);}else setErr("Could not load "+tool.file+" from the repo ("+e.message+"). Check that dm/"+tool.file+" is uploaded.");});
+  };
+  useEffect(function(){if(seen.current&&html===null&&!err)load();},[active]);
+  if(!seen.current)return null;
+  return <div style={{display:active?"block":"none"}}>
+    {err&&<div style={{padding:"20px",textAlign:"center",fontFamily:"'EB Garamond',serif",color:"#e07060"}}>{err} <span onClick={load} style={{cursor:"pointer",textDecoration:"underline"}}>Retry</span></div>}
+    {!err&&html===null&&<div style={{padding:"20px",textAlign:"center",fontFamily:"'EB Garamond',serif",fontStyle:"italic",color:"rgba(232,213,176,.5)"}}>Loading {tool.label}…</div>}
+    {html!==null&&<iframe data-dmtool="1" title={tool.label} srcDoc={html} onLoad={function(e){dmPostParty(e.target);}} style={{width:"100%",height:"calc(100vh - 150px)",minHeight:520,border:"1px solid rgba(232,213,176,.15)",borderRadius:4,background:"#fff"}}/>}
+  </div>;
+}
+
 function App(){
   const NOTE_KEYS=["npc","locations","lore","factions","nt1","nt3","customSections"];
   const [tab,setTab]=useState("combat");
   const [notes,setNotes]=useState({npc:[],locations:[],lore:[],factions:[],nt1:[],nt3:[],customSections:[]});
   const [combat,setCombat]=useState({round:1,turnId:null,started:false,combatants:[]});
   const [lightbox,setLightbox]=useState(null);
+  const pcKey=JSON.stringify((combat.combatants||[]).filter(function(c){return c.type==="pc";}).map(function(c){return {id:c.id,name:c.name,init:(c.init===""||c.init==null)?null:+c.init};}));
+  window.__dmPcs=pcKey;
+  useEffect(function(){
+    var fr=document.querySelectorAll("iframe[data-dmtool]");
+    for(var i=0;i<fr.length;i++)dmPostParty(fr[i]);
+  },[pcKey]);
   const [confirmState,setConfirmState]=useState({open:false,message:"",onConfirm:null});
   const fileRef=useRef(null);
   const fileHandle=useRef(null);
@@ -5211,11 +5282,16 @@ function App(){
         {tabBtn("combat","Combat","123,79,207")}
         {tabBtn("compendium","Compendium","201,150,42")}
         {tabBtn("codex","Codex","74,156,92")}
+        {DM_TOOLS.map(function(t){return <React.Fragment key={t.id}>{tabBtn(t.id,t.label,t.col)}</React.Fragment>;})}
       </div>
     </div>
     <div style={{display:tab==="combat"?"block":"none"}}><CombatTracker combat={combat} setCombat={setCombat} setLightbox={setLightbox} onAddCreature={addToCombat}/></div>
     {tab==="compendium"&&<div style={{maxWidth:980,margin:"0 auto"}}><CompendiumPage onAddCreature={addToCombat}/></div>}
     {tab==="codex"&&<div style={{maxWidth:980,margin:"0 auto"}}><Page4 c={notes} s={notesS}/></div>}
+    <div style={{maxWidth:1500,margin:"0 auto",display:DM_TOOLS.some(function(t){return t.id===tab;})?"block":"none"}}>
+      <PartyHpStrip combat={combat} setCombat={setCombat}/>
+      {DM_TOOLS.map(function(t){return <ToolFrame key={t.id} tool={t} active={tab===t.id}/>;})}
+    </div>
     <datalist id="cond-list">{COMMON_CONDITIONS.map(function(x){return <option key={x} value={x}/>;})}</datalist>
     {lightbox&&<div onClick={function(){setLightbox(null);}} style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.9)",zIndex:100001,display:"flex",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}}><img src={lightbox} style={{maxWidth:"95vw",maxHeight:"95vh",objectFit:"contain"}}/></div>}
     {addMsg&&<div style={{position:"fixed",top:64,left:"50%",transform:"translateX(-50%)",zIndex:100002,pointerEvents:"none",maxWidth:"92vw"}}>
@@ -5224,7 +5300,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.1.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.4.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
