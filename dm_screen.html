@@ -5203,6 +5203,15 @@ function App(){
     var fr=document.querySelectorAll("iframe[data-dmtool]");
     for(var i=0;i<fr.length;i++)dmPostParty(fr[i]);
   },[pcKey]);
+  useEffect(function(){
+    var h=function(e){
+      if(!e.data||e.data.dm!=="hello")return;
+      var fr=document.querySelectorAll("iframe[data-dmtool]");
+      for(var i=0;i<fr.length;i++){if(fr[i].contentWindow===e.source)dmPostParty(fr[i]);}
+    };
+    window.addEventListener("message",h);
+    return function(){window.removeEventListener("message",h);};
+  },[]);
   const [confirmState,setConfirmState]=useState({open:false,message:"",onConfirm:null});
   const fileRef=useRef(null);
   const fileHandle=useRef(null);
@@ -5300,7 +5309,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.4.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.4.1</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
