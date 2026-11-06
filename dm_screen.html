@@ -3673,12 +3673,12 @@ function ToolReferenceModal({onClose}){
   function toggle(n){setOpen(function(e){var x=Object.assign({},e);x[n]=!x[n];return x;});}
   var list=TOOL_DATA.filter(function(t){return !q.trim()||t.n.toLowerCase().indexOf(q.toLowerCase())>=0;});
   return (
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div onClick={function(e){e.stopPropagation();}} style={{background:"#1a1410",border:"1px solid rgba(201,150,42,.4)",borderRadius:4,maxWidth:560,width:"100%",maxHeight:"82vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(0,0,0,.8)"}}>
+    <div onClick={onClose} style={{position:"fixed",inset:0,height:"100dvh",background:"rgba(0,0,0,.7)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:12,boxSizing:"border-box"}}>
+      <div onClick={function(e){e.stopPropagation();}} style={{background:"#1a1410",border:"1px solid rgba(201,150,42,.4)",borderRadius:4,maxWidth:560,width:"100%",maxHeight:"100%",display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(0,0,0,.8)"}}>
         <div style={{padding:"18px 22px 10px",borderBottom:"1px solid rgba(201,150,42,.15)"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:1,color:"var(--gold-l)",flex:1}}>Tool Proficiencies</span>
-            <div onClick={onClose} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:16,color:"rgba(232,213,176,.5)",lineHeight:1,padding:"0 4px"}}>×</div>
+            <div onClick={onClose} title="Close" style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:24,color:"rgba(232,213,176,.7)",lineHeight:1,padding:"6px 12px",margin:"-6px -8px -6px 0",flexShrink:0}}>×</div>
           </div>
           <input value={q} onChange={function(e){setQ(e.target.value);}} placeholder="Filter tools..." style={{marginTop:10,width:"100%",background:"rgba(0,0,0,.3)",border:"1px solid rgba(201,150,42,.2)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:13,outline:"none",padding:"6px 8px",borderRadius:2}} />
         </div>
@@ -3837,12 +3837,12 @@ function WeaponReferenceModal({onClose}){
   function tdStyle(){return {fontFamily:"'EB Garamond',serif",fontSize:12.5,color:"rgba(232,213,176,.85)",padding:"4px 8px",borderBottom:"1px solid rgba(201,74,42,.06)",verticalAlign:"top"};}
   var tabBtn=function(k,lbl){return <span onClick={function(){setTab(k);}} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",padding:"4px 10px",borderRadius:2,userSelect:"none",border:"1px solid "+(tab===k?"rgba(201,74,42,.6)":"rgba(201,74,42,.2)"),color:tab===k?"#e07060":"rgba(232,213,176,.45)",background:tab===k?"rgba(201,74,42,.12)":"transparent"}}>{lbl}</span>;};
   return (
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div onClick={function(e){e.stopPropagation();}} style={{background:"#1a1410",border:"1px solid rgba(201,74,42,.4)",borderRadius:4,maxWidth:720,width:"100%",maxHeight:"86vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(0,0,0,.8)"}}>
+    <div onClick={onClose} style={{position:"fixed",inset:0,height:"100dvh",background:"rgba(0,0,0,.7)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:12,boxSizing:"border-box"}}>
+      <div onClick={function(e){e.stopPropagation();}} style={{background:"#1a1410",border:"1px solid rgba(201,74,42,.4)",borderRadius:4,maxWidth:720,width:"100%",maxHeight:"100%",display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(0,0,0,.8)"}}>
         <div style={{padding:"18px 22px 10px",borderBottom:"1px solid rgba(201,74,42,.15)"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:1,color:"#e07060",flex:1}}>Weapons &amp; Armor Reference</span>
-            <div onClick={onClose} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:16,color:"rgba(232,213,176,.5)",lineHeight:1,padding:"0 4px"}}>×</div>
+            <div onClick={onClose} title="Close" style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:24,color:"rgba(232,213,176,.7)",lineHeight:1,padding:"6px 12px",margin:"-6px -8px -6px 0",flexShrink:0}}>×</div>
           </div>
           <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>{tabBtn("weapons","Weapons")}{tabBtn("armor","Armor")}{tabBtn("properties","Properties")}{tabBtn("mastery","Mastery")}{tabBtn("ammo","Ammunition")}</div>
           {tab==="weapons"&&<input value={q} onChange={function(e){setQ(e.target.value);}} placeholder="Filter weapons..." style={{marginTop:10,width:"100%",background:"rgba(0,0,0,.3)",border:"1px solid rgba(201,74,42,.2)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:13,outline:"none",padding:"6px 8px",borderRadius:2}} />}
@@ -3923,12 +3923,12 @@ function ConditionReferenceModal({onClose}){
   function toggle(n){setOpen(function(e){var x=Object.assign({},e);x[n]=!x[n];return x;});}
   var list=CONDITION_DATA.filter(function(t){return !q.trim()||t.n.toLowerCase().indexOf(q.toLowerCase())>=0;});
   return (
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div onClick={function(e){e.stopPropagation();}} style={{background:"#1a1410",border:"1px solid rgba(56,178,172,.4)",borderRadius:4,maxWidth:560,width:"100%",maxHeight:"82vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(0,0,0,.8)"}}>
+    <div onClick={onClose} style={{position:"fixed",inset:0,height:"100dvh",background:"rgba(0,0,0,.7)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:12,boxSizing:"border-box"}}>
+      <div onClick={function(e){e.stopPropagation();}} style={{background:"#1a1410",border:"1px solid rgba(56,178,172,.4)",borderRadius:4,maxWidth:560,width:"100%",maxHeight:"100%",display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(0,0,0,.8)"}}>
         <div style={{padding:"18px 22px 10px",borderBottom:"1px solid rgba(56,178,172,.15)"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:1,color:"rgba(56,178,172,.9)",flex:1}}>Conditions (PHB 2024)</span>
-            <div onClick={onClose} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:16,color:"rgba(232,213,176,.5)",lineHeight:1,padding:"0 4px"}}>×</div>
+            <div onClick={onClose} title="Close" style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:24,color:"rgba(232,213,176,.7)",lineHeight:1,padding:"6px 12px",margin:"-6px -8px -6px 0",flexShrink:0}}>×</div>
           </div>
           <input value={q} onChange={function(e){setQ(e.target.value);}} placeholder="Filter conditions..." style={{marginTop:10,width:"100%",background:"rgba(0,0,0,.3)",border:"1px solid rgba(56,178,172,.2)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:13,outline:"none",padding:"6px 8px",borderRadius:2}} />
         </div>
@@ -5849,9 +5849,9 @@ function App(){
   const [refOpen,setRefOpen]=React.useState(null);
   return <div style={{minHeight:"100vh",padding:"16px 14px 60px"}}>
     <style>{CSS}</style>
-    {refOpen==="wpn"&&<WeaponReferenceModal onClose={function(){setRefOpen(null);}} />}
-    {refOpen==="tool"&&<ToolReferenceModal onClose={function(){setRefOpen(null);}} />}
-    {refOpen==="cond"&&<ConditionReferenceModal onClose={function(){setRefOpen(null);}} />}
+    {refOpen==="wpn"&&ReactDOM.createPortal(<WeaponReferenceModal onClose={function(){setRefOpen(null);}} />,document.body)}
+    {refOpen==="tool"&&ReactDOM.createPortal(<ToolReferenceModal onClose={function(){setRefOpen(null);}} />,document.body)}
+    {refOpen==="cond"&&ReactDOM.createPortal(<ConditionReferenceModal onClose={function(){setRefOpen(null);}} />,document.body)}
     <div style={{maxWidth:980,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18,flexWrap:"wrap"}}>
         <div style={{flex:1,display:"flex",alignItems:"baseline",gap:8}}><span style={{fontFamily:"'Cinzel Decorative',cursive",fontSize:18,color:GOLDL,letterSpacing:1}}>Dungeon Master Screen</span></div>
@@ -5889,7 +5889,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.6.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.6.1</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
