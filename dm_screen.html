@@ -3635,6 +3635,572 @@ function EcRail({onExpand,onCollapse,show}){
 // to the saved JSON and cleared on a full page reload. Page number is not kept.
 var _cmpSession={kind:"spells",byKind:{}};
 
+// ─── Reference modals (same data as the character sheet) ──────────────────────
+// ─── Tool Proficiency Reference (XGE p78) ─────────────────────────────────────
+const TOOL_DATA=[
+  {n:"Alchemist's Supplies",d:"Artisan's Tools · 50 gp · 8 lb · Ability: Intelligence\n\nAlchemist's supplies enable a character to produce useful concoctions, such as acid or alchemist's fire.\n\nComponents. Two glass beakers, a metal frame to hold a beaker over a flame, a glass stirring rod, a small mortar and pestle, and a pouch of common alchemical ingredients (salt, powdered iron, purified water).\n\nUtilize (2024). Identify a substance (DC 15), or start a fire (DC 15).\n\nSample DCs (2014). Puff of thick smoke 10 · Identify a poison 10 · Identify a substance 15 · Start a fire 15 · Neutralize acid 20.\n\nCraft (2024). Acid, Alchemist's Fire, Component Pouch, Oil, Paper, Perfume.\n\nExamples of Advantage on a Roll\n\nArcana. Unlock more information on Arcana checks involving potions and similar materials.\n\nInvestigation. Additional insight into any chemicals or substances used in an area.\n\nTool Features\n\nAlchemical Crafting (2014). Spend money to collect raw materials (1 lb per 50 gp). As part of a long rest, make one dose of acid, alchemist's fire, antitoxin, oil, perfume, or soap; subtract half the created item's value from your raw materials."},
+  {n:"Brewer's Supplies",d:"Artisan's Tools · 20 gp · 9 lb · Ability: Intelligence\n\nBrewing produces beer and also purifies water. Takes weeks of fermentation but only a few hours of work.\n\nComponents. A large glass jug, a quantity of hops, a siphon, and several feet of tubing.\n\nUtilize (2024). Detect poisoned drink (DC 15), or identify alcohol (DC 10).\n\nSample DCs (2014). Detect poison/impurities in a drink 10 · Identify alcohol 15 · Ignore effects of alcohol 20.\n\nCraft (2024). Antitoxin.\n\nExamples of Advantage on a Roll\n\nHistory. Additional insight on History checks concerning events involving alcohol.\n\nMedicine. Insight when treating alcohol poisoning or using alcohol to dull pain.\n\nPersuasion. Ply someone with drink to mellow their mood.\n\nTool Features\n\nPotable Water (2014). Purify up to 6 gallons of water on a long rest, or 1 gallon on a short rest."},
+  {n:"Calligrapher's Supplies",d:"Artisan's Tools · 10 gp · 5 lb · Ability: Dexterity\n\nCalligraphy treats writing as a delicate, beautiful art, hard to forge.\n\nComponents. Ink, a dozen sheets of parchment, and three quills.\n\nUtilize (2024). Write text with impressive flourishes that guard against forgery (DC 15).\n\nSample DCs (2014). Identify writer of nonmagical script 10 · Determine writer's state of mind 15 · Spot forged text 15 · Forge a signature 20.\n\nCraft (2024). Ink, Spell Scroll.\n\nExamples of Advantage on a Roll\n\nArcana. Aid in identifying who wrote a script of a magical nature.\n\nHistory. Augment checks to analyze or investigate ancient writings, scrolls, runes, or frescoes.\n\nTool Features\n\nDecipher Treasure Map (2014). Expertise examining maps — determine a map's age, hidden messages, or similar facts."},
+  {n:"Carpenter's Tools",d:"Artisan's Tools · 8 gp · 6 lb · Ability: Strength\n\nSkill at carpentry enables building wooden structures — a house, shack, cabinet, or similar.\n\nComponents. A saw, hammer, nails, hatchet, square, ruler, adze, plane, and chisel.\n\nUtilize (2024). Seal or pry open a door or container (DC 20).\n\nSample DCs (2014). Build a simple structure 10 · Design a complex structure 15 · Find a weak point in a wooden wall 15 · Pry apart a door 20.\n\nCraft (2024). Club, Greatclub, Quarterstaff, Barrel, Chest, Ladder, Pole, Portable Ram, Torch.\n\nExamples of Advantage on a Roll\n\nHistory. Identify the use and origin of wooden buildings and large wooden objects.\n\nInvestigation. Insight inspecting wooden structures; you know tricks that conceal areas.\n\nPerception. Spot irregularities in wooden walls or floors (trap doors, secret passages).\n\nStealth. Assess weak spots in a wooden floor to avoid creaks.\n\nTool Features\n\nFortify (2014). 1 minute + materials to make a door or window harder to force (DC to open +5).\n\nTemporary Shelter (2014). As part of a long rest, build a lean-to that collapses 1d3 days later."},
+  {n:"Cartographer's Tools",d:"Artisan's Tools · 15 gp · 6 lb · Ability: Wisdom\n\nCreate accurate maps, from mountain ranges to dungeon levels.\n\nComponents. A quill, ink, parchment, a pair of compasses, calipers, and a ruler.\n\nUtilize (2024). Draft a map of a small area (DC 15).\n\nSample DCs (2014). Determine a map's age and origin 10 · Estimate direction/distance to a landmark 15 · Discern a map is fake 15 · Fill in a missing part 20.\n\nCraft (2024). Map.\n\nExamples of Advantage on a Roll\n\nArcana, History, Religion. Unearth detailed information — spot hidden messages, identify when a map was made, etc.\n\nNature. Answer questions relating to surrounding terrain.\n\nSurvival. Find paths to civilization, predict settlements, avoid getting lost.\n\nTool Features\n\nCraft a Map (2014). Draw a map as you travel, in addition to other activity."},
+  {n:"Cobbler's Tools",d:"Artisan's Tools · 5 gp · 5 lb · Ability: Dexterity\n\nA good pair of boots sees a character across rugged wilderness and deadly dungeons.\n\nComponents. A hammer, awl, knife, shoe stand, cutter, spare leather, and thread.\n\nUtilize (2024). Modify footwear to give Advantage on the wearer's next Dexterity (Acrobatics) check (DC 10).\n\nSample DCs (2014). Determine a shoe's age and origin 10 · Find a hidden compartment in a boot heel 15.\n\nCraft (2024). Climber's Kit.\n\nExamples of Advantage on a Roll\n\nArcana, History. Identify magical properties or history of enchanted boots.\n\nInvestigation. Learn where someone recently visited by examining wear and dirt on shoes.\n\nTool Features\n\nMaintain Shoes (2014). On a long rest, repair companions' shoes; for 24 hours up to six creatures can travel up to 10 hours/day without exhaustion saves.\n\nCraft Hidden Compartment (2014). 8 hours of work adds a compartment (up to 3×1×1 in) to a pair of shoes."},
+  {n:"Cook's Utensils",d:"Artisan's Tools · 1 gp · 8 lb · Ability: Wisdom\n\nWith a cook along, meals are much better than hardtack and dried fruit.\n\nComponents. A metal pot, knives, forks, a stirring spoon, and a ladle.\n\nUtilize (2024). Improve food's flavor (DC 10), or detect spoiled or poisoned food (DC 15).\n\nSample DCs (2014). Create a typical meal 10 · Duplicate a meal 10 · Spot poison/impurities in food 15 · Create a gourmet meal 15.\n\nCraft (2024). Rations.\n\nExamples of Advantage on a Roll\n\nHistory. Assess social patterns in a culture's eating habits.\n\nMedicine. Transform bitter or sour medicine into a pleasing concoction.\n\nSurvival. Make do with scavenged ingredients others couldn't use.\n\nTool Features\n\nPrepare Meals (2014). As part of a short rest, you and up to five creatures regain 1 extra hit point per Hit Die spent, given food and your utensils."},
+  {n:"Disguise Kit",d:"Tool · 25 gp · 3 lb · Ability: Charisma\n\nAdopt a false identity.\n\nComponents. Cosmetics, hair dye, small props, and a few pieces of clothing.\n\nUtilize (2024). Apply makeup (DC 10).\n\nSample DCs (2014). Cover injuries/marks 10 · Spot a disguise on someone else 15 · Copy a humanoid's appearance 20.\n\nCraft (2024). Costume.\n\nExamples of Advantage on a Roll\n\nDeception. A disguise can improve convincing lies.\n\nIntimidation. The right disguise can make you look more fearsome.\n\nPerformance. A cunning disguise can enhance a performance.\n\nPersuasion. Disguised as an authority figure, persuasion is more effective.\n\nTool Features\n\nCreate Disguise (2014). As part of a long rest; takes 1 minute to don. Carry only one without drawing attention (each weighs 1 lb). 10 min for moderate changes, 30 min for extensive."},
+  {n:"Forgery Kit",d:"Tool · 15 gp · 5 lb · Ability: Dexterity\n\nDuplicate documents and copy a person's seal or signature.\n\nComponents. Several inks, parchments and papers, quills, seals and sealing wax, gold and silver leaf, and small tools to sculpt wax.\n\nUtilize (2024). Mimic 10 or fewer words of someone else's handwriting (DC 15), or duplicate a wax seal (DC 20).\n\nSample DCs (2014). Mimic handwriting 15 · Duplicate a wax seal 20.\n\nExamples of Advantage on a Roll\n\nArcana. Determine if a magic item is real or fake.\n\nDeception. A well-crafted forgery lends credence to a lie.\n\nHistory. Create fake historical documents or tell if an old document is authentic.\n\nInvestigation. Determine how an object was made and whether it is genuine.\n\nOther Tools. Combine with other tool proficiencies (e.g. cartographer's) for more believable forgeries.\n\nTool Features\n\nQuick Fake (2014). Short rest: a one-page forged document. Long rest: up to four pages. Your check sets the DC to spot it."},
+  {n:"Gaming Set",d:"Cost: 1 sp · Ability: Wisdom\n\nProficiency applies to one type of game (e.g. Three-Dragon Ante or dice games).\n\nComponents. All pieces needed for a specific game — a deck of cards or a board and tokens.\n\nUtilize (2024). Discern whether someone is cheating (DC 10), or win the game (DC 20).\n\nSample DCs (2014). Catch a player cheating 15 · Gain insight into an opponent's personality 15.\n\nExamples of Advantage on a Roll\n\nHistory. Knowledge of a game's history and figures connected to it.\n\nInsight. Playing games reveals personality, helping you read lies and mood.\n\nSleight of Hand. Cheat by swapping pieces, palming cards, or altering a die; or distract for a pickpocket attempt."},
+  {n:"Glassblower's Tools",d:"Artisan's Tools · 30 gp · 5 lb · Ability: Intelligence\n\nShape glass and know the methods used to produce glass objects.\n\nComponents. A blowpipe, a small marver, blocks, and tweezers. You need a source of heat.\n\nUtilize (2024). Discern what a glass object held in the past 24 hours (DC 15).\n\nSample DCs (2014). Identify source of glass 10 · Determine what a glass object once held 20.\n\nCraft (2024). Glass Bottle, Magnifying Glass, Spyglass, Vial.\n\nExamples of Advantage on a Roll\n\nArcana, History. Examine glass objects such as potion bottles or treasure-hoard glass; residue or deformation can hint at a potion's effects.\n\nInvestigation. Aid when clues include broken glass or glass objects.\n\nTool Features\n\nIdentify Weakness (2014). 1 minute of study identifies weak points; damage to a weak spot is doubled."},
+  {n:"Herbalism Kit",d:"Tool · 5 gp · 3 lb · Ability: Intelligence\n\nIdentify plants and safely collect their useful elements.\n\nComponents. Pouches to store herbs, clippers and leather gloves, a mortar and pestle, and several glass jars.\n\nUtilize (2024). Identify a plant (DC 10).\n\nSample DCs (2014). Find plants 15 · Identify poison 20.\n\nCraft (2024). Antitoxin, Candle, Healer's Kit, Potion of Healing.\n\nExamples of Advantage on a Roll\n\nArcana. Insight into magical studies dealing with plants and identifying potions.\n\nInvestigation. Pick out details and clues in plant-overgrown areas.\n\nMedicine. Treat illnesses and wounds with medicinal plants.\n\nNature and Survival. Identify plants and spot food in the wild.\n\nTool Features\n\nIdentify Plants (2014). Identify most plants with a quick inspection."},
+  {n:"Jeweler's Tools",d:"Artisan's Tools · 25 gp · 2 lb · Ability: Intelligence\n\nBeautify gems and identify precious stones.\n\nComponents. A small saw and hammer, files, pliers, and tweezers.\n\nUtilize (2024). Discern a gem's value (DC 15).\n\nSample DCs (2014). Modify a gem's appearance 15 · Determine a gem's history 20.\n\nCraft (2024). Arcane Focus, Holy Symbol.\n\nExamples of Advantage on a Roll\n\nArcana. Knowledge of the reputed mystical uses of gems.\n\nInvestigation. Pick out clues in jeweled objects.\n\nTool Features\n\nIdentify Gems (2014). Identify gems and determine their value at a glance."},
+  {n:"Land and Water Vehicles",d:"Handle, repair, and maintain vehicles of that type. Water-vehicle proficiency also covers sailor's knowledge (the sea, knots, weather).\n\nSample DCs (2014). Navigate rough terrain/waters 10 · Assess a vehicle's condition 15 · Take a tight corner at high speed 20.\n\nExamples of Advantage on a Roll\n\nArcana. Uncover lore or determine how a magic vehicle operates.\n\nInvestigation, Perception. Notice things others miss when inspecting a vehicle.\n\nTool Features\n\nVehicle Handling (2014). While piloting, apply your proficiency bonus to the vehicle's AC and saving throws."},
+  {n:"Leatherworker's Tools",d:"Artisan's Tools · 5 gp · 5 lb · Ability: Dexterity\n\nLore concerning animal hides and leather goods.\n\nComponents. A knife, a small mallet, an edger, a hole punch, thread, and leather scraps.\n\nUtilize (2024). Add a design to a leather item (DC 10).\n\nSample DCs (2014). Modify a leather item's appearance 10 · Determine a leather item's history 20.\n\nCraft (2024). Sling, Whip, Hide Armor, Leather Armor, Studded Leather Armor, Backpack, Crossbow Bolt Case, Map or Scroll Case, Parchment, Pouch, Quiver, Waterskin.\n\nExamples of Advantage on a Roll\n\nArcana. Insight inspecting magic items crafted from leather (boots, some cloaks).\n\nInvestigation. Insight studying leather items or related clues.\n\nTool Features\n\nIdentify Hides (2014). Determine the source of leather and techniques used (e.g. dwarven vs halfling methods)."},
+  {n:"Mason's Tools",d:"Artisan's Tools · 10 gp · 8 lb · Ability: Strength\n\nCraft stone and brick structures.\n\nComponents. A trowel, hammer, chisel, brushes, and a square.\n\nUtilize (2024). Chisel a symbol or hole in stone (DC 10).\n\nSample DCs (2014). Chisel a small hole in a stone wall 10 · Find a weak point in a stone wall 15.\n\nCraft (2024). Block and Tackle.\n\nExamples of Advantage on a Roll\n\nHistory. Identify a stone building's date, purpose, and likely builder.\n\nInvestigation. Insight inspecting areas within stone structures.\n\nPerception. Spot irregularities in stone walls or floors (trap doors, secret passages).\n\nTool Features\n\nDemolition (2014). Spot weak points in brick walls; deal double damage to such structures with weapon attacks."},
+  {n:"Musical Instrument",d:"Familiarity with techniques to play an instrument and knowledge of common songs.\n\nSample DCs (2014). Identify a tune 10 · Improvise a tune 20.\n\nExamples of Advantage on a Roll\n\nHistory. Recall lore related to your instrument.\n\nPerformance. Improve your act by incorporating an instrument.\n\nTool Features\n\nCompose a Tune (2014). As part of a long rest, compose a new tune and lyrics."},
+  {n:"Navigator's Tools",d:"Tool · 25 gp · 2 lb · Ability: Wisdom\n\nDetermine a true course by the stars; insight into charts and direction.\n\nComponents. A sextant, compass, calipers, ruler, parchment, ink, and a quill.\n\nUtilize (2024). Plot a course (DC 10), or determine position by stargazing (DC 15).\n\nSample DCs (2014). Plot a course 10 · Discover your position on a nautical chart 15.\n\nExamples of Advantage on a Roll\n\nSurvival. Avoid getting lost; insight into likely roads and settlements.\n\nTool Features\n\nSighting (2014). Determine your position on a nautical chart and the time of day."},
+  {n:"Painter's Supplies",d:"Artisan's Tools · 10 gp · 5 lb · Ability: Wisdom\n\nPaint and draw, with an understanding of art history.\n\nComponents. An easel, canvas, paints, brushes, charcoal sticks, and a palette.\n\nUtilize (2024). Paint a recognizable image of something you've seen (DC 10).\n\nSample DCs (2014). Paint an accurate portrait 10 · Create a painting with a hidden message 20.\n\nCraft (2024). Druidic Focus, Holy Symbol.\n\nExamples of Advantage on a Roll\n\nArcana, History, Religion. Uncover lore attached to a work of art.\n\nInvestigation, Perception. Insight when inspecting a painting or visual art.\n\nTool Features\n\nPainting and Drawing (2014). As part of a short or long rest, produce a simple work of art or a quick copy."},
+  {n:"Poisoner's Kit",d:"Tool · 50 gp · 2 lb · Ability: Intelligence\n\nApply and create poisons, and treat them.\n\nComponents. Glass vials, a mortar and pestle, chemicals, and a glass stirring rod.\n\nUtilize (2024). Detect a poisoned object (DC 10).\n\nSample DCs (2014). Spot a poisoned object 10 · Determine the effects of a poison 20.\n\nCraft (2024). Basic Poison.\n\nExamples of Advantage on a Roll\n\nHistory. Recall facts about infamous poisonings.\n\nInvestigation, Perception. Edge inspecting poisoned objects or poison-related events.\n\nMedicine. Added insight treating a poison victim.\n\nNature, Survival. Lore about poisonous plants and animals.\n\nTool Features\n\nHandle Poison (2014). Handle and apply a poison without risk of exposing yourself."},
+  {n:"Potter's Tools",d:"Artisan's Tools · 10 gp · 3 lb · Ability: Intelligence\n\nCreate ceramic objects, typically pots and vessels.\n\nComponents. Potter's needles, ribs, scrapers, a knife, and calipers.\n\nUtilize (2024). Discern what a ceramic object held in the past 24 hours (DC 15).\n\nSample DCs (2014). Determine what a vessel once held 10 · Create a serviceable pot 15 · Find a weak point in a ceramic object 20.\n\nCraft (2024). Jug, Lamp.\n\nExamples of Advantage on a Roll\n\nHistory. Identify ceramic objects' age and culture of origin.\n\nInvestigation, Perception. Insight inspecting ceramics for clues.\n\nTool Features\n\nReconstruction (2014). From shards, determine an object's original form and purpose."},
+  {n:"Smith's Tools",d:"Artisan's Tools · 20 gp · 8 lb · Ability: Strength\n\nWork metal — alter shape, repair damage, or work ingots into items.\n\nComponents. Hammers, tongs, charcoal, rags, and a whetstone.\n\nUtilize (2024). Pry open a door or container (DC 20).\n\nSample DCs (2014). Sharpen a dull blade 10 · Repair a suit of armor 15 · Sunder a nonmagical metal object 15.\n\nCraft (2024). Any Melee weapon (except Club, Greatclub, Quarterstaff, Whip), Medium armor (except Hide), Heavy armor, Ball Bearings, Bucket, Caltrops, Chain, Crowbar, Firearm Bullets, Grappling Hook, Iron Pot, Iron Spikes, Sling Bullets.\n\nExamples of Advantage on a Roll\n\nArcana and History. Insight examining metal objects such as weapons.\n\nInvestigation. Spot clues when an investigation involves armor, weapons, or metalwork.\n\nTool Features\n\nRepair (2014). With tools and an open flame, restore 10 hit points to a damaged metal object per hour of work."},
+  {n:"Thieves' Tools",d:"Tool · 25 gp · 1 lb · Ability: Dexterity\n\nPick locks and foil traps; general knowledge of traps and locks.\n\nComponents. A small file, lock picks, a small mirror on a handle, narrow-bladed scissors, and pliers.\n\nUtilize (2024). Pick a lock (DC 15), or disarm a trap (DC 15).\n\nSample DCs (2014). Pick a lock — Varies · Disable a trap — Varies.\n\nExamples of Advantage on a Roll\n\nHistory. Insight about locations renowned for their traps.\n\nInvestigation and Perception. Insight looking for traps via common tell-tale signs.\n\nTool Features\n\nSet a Trap (2014). As part of a short rest, create a trap; your check is the DC to discover or disable it."},
+  {n:"Tinker's Tools",d:"Artisan's Tools · 50 gp · 10 lb · Ability: Dexterity\n\nRepair many mundane objects — mend clothes, sharpen a sword, patch chain mail.\n\nComponents. A variety of hand tools, thread, needles, a whetstone, scraps of cloth and leather, and a small pot of glue.\n\nUtilize (2024). Assemble a Tiny item composed of scrap, which falls apart in 1 minute (DC 20).\n\nSample DCs (2014). Temporarily repair a disabled device 10 · Repair an item in half the time 15 · Improvise a temporary item from scraps 20.\n\nCraft (2024). Musket, Pistol, Bell, Bullseye Lantern, Flask, Hooded Lantern, Hunting Trap, Lock, Manacles, Mirror, Shovel, Signal Whistle, Tinderbox.\n\nExamples of Advantage on a Roll\n\nHistory. Determine the age and origin of objects from a few remaining pieces.\n\nInvestigation. Learn how a damaged object was damaged and how long ago.\n\nTool Features\n\nRepair (2014). Restore 10 hit points to a damaged object per hour of work (materials required; metal needs an open flame)."},
+  {n:"Weaver's Tools",d:"Artisan's Tools · 1 gp · 5 lb · Ability: Dexterity\n\nCreate cloth and tailor it into clothing.\n\nComponents. Thread, needles, and scraps of cloth. (A loom is too large to transport.)\n\nUtilize (2024). Mend a tear in clothing (DC 10), or sew a Tiny design (DC 10).\n\nSample DCs (2014). Repurpose cloth 10 · Mend a hole in cloth 10 · Tailor an outfit 15.\n\nCraft (2024). Padded Armor, Basket, Bedroll, Blanket, Fine Clothes, Net, Robe, Rope, Sack, String, Tent, Traveler's Clothes.\n\nExamples of Advantage on a Roll\n\nArcana, History. Insight examining cloth objects such as cloaks and robes.\n\nInvestigation. Spot clues others overlook when examining tapestries, upholstery, or clothing.\n\nTool Features\n\nRepair (2014). As part of a short rest, repair a single damaged cloth object.\n\nCraft Clothing (2014). With sufficient cloth and thread, create an outfit as part of a long rest."},
+  {n:"Woodcarver's Tools",d:"Artisan's Tools · 1 gp · 5 lb · Ability: Dexterity\n\nCraft intricate objects from wood, such as tokens or arrows.\n\nComponents. A knife, a gouge, and a small saw.\n\nUtilize (2024). Carve a pattern in wood (DC 10).\n\nSample DCs (2014). Craft a small wooden figurine 10 · Carve an intricate pattern in wood 15.\n\nCraft (2024). Club, Greatclub, Quarterstaff, Ranged weapons (except Pistol, Musket, Sling), Arcane Focus, Arrows, Bolts, Druidic Focus, Ink Pen, Needles.\n\nExamples of Advantage on a Roll\n\nArcana, History. Insight examining wooden objects such as figurines or arrows.\n\nNature. Added insight when you examine trees.\n\nTool Features\n\nRepair (2014). As part of a short rest, repair a single damaged wooden object.\n\nCraft Arrows (2014). Short rest: up to five arrows. Long rest: up to twenty. Requires wood on hand."}
+];
+
+function ToolReferenceModal({onClose}){
+  const {useState:us}=React;
+  const [open,setOpen]=us({});
+  const [q,setQ]=us("");
+  function toggle(n){setOpen(function(e){var x=Object.assign({},e);x[n]=!x[n];return x;});}
+  var list=TOOL_DATA.filter(function(t){return !q.trim()||t.n.toLowerCase().indexOf(q.toLowerCase())>=0;});
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div onClick={function(e){e.stopPropagation();}} style={{background:"#1a1410",border:"1px solid rgba(201,150,42,.4)",borderRadius:4,maxWidth:560,width:"100%",maxHeight:"82vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(0,0,0,.8)"}}>
+        <div style={{padding:"18px 22px 10px",borderBottom:"1px solid rgba(201,150,42,.15)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:1,color:"var(--gold-l)",flex:1}}>Tool Proficiencies</span>
+            <div onClick={onClose} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:16,color:"rgba(232,213,176,.5)",lineHeight:1,padding:"0 4px"}}>×</div>
+          </div>
+          <input value={q} onChange={function(e){setQ(e.target.value);}} placeholder="Filter tools..." style={{marginTop:10,width:"100%",background:"rgba(0,0,0,.3)",border:"1px solid rgba(201,150,42,.2)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:13,outline:"none",padding:"6px 8px",borderRadius:2}} />
+        </div>
+        <div style={{overflowY:"auto",padding:"4px 0"}}>
+          {list.map(function(t){
+            var isO=open[t.n];
+            return (
+              <div key={t.n} style={{borderBottom:"1px solid rgba(201,150,42,.07)"}}>
+                <div onClick={function(){toggle(t.n);}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 22px",cursor:"pointer"}}>
+                  <span style={{fontFamily:"'Cinzel',serif",fontSize:11,color:"rgba(201,150,42,.4)",width:12,flexShrink:0}}>{isO?"−":"+"}</span>
+                  <span style={{fontFamily:"'EB Garamond',serif",fontSize:14,color:"var(--gold-l)",fontWeight:600}}>{t.n}</span>
+                </div>
+                {isO&&<div style={{padding:"2px 22px 14px 44px",fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.8)",lineHeight:1.65}}>
+                  {t.d.split("\n\n").map(function(para,pi){
+                    var isHdr=para==="Examples of Advantage on a Roll"||para==="Tool Features";
+                    if(isHdr) return <div key={pi} style={{fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1.5,textTransform:"uppercase",color:"var(--gold-l)",marginTop:12,marginBottom:5,borderBottom:"1px solid rgba(201,150,42,.15)",paddingBottom:3}}>{para}</div>;
+                    return <div key={pi} style={{marginBottom:7,whiteSpace:"pre-wrap"}}>{para}</div>;
+                  })}
+                </div>}
+              </div>
+            );
+          })}
+          {list.length===0&&<div style={{padding:"18px 22px",fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.3)"}}>No matching tool.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ─── Weapon reference (PHB 2024 weapons, mastery, properties, ammunition) ───────
+const WEAPON_DATA={
+  "Simple Melee":[
+    {n:"Club",dmg:"1d4 Bludgeoning",prop:"Light",mast:"Slow",wt:"2 lb.",cost:"1 SP"},
+    {n:"Dagger",dmg:"1d4 Piercing",prop:"Finesse, Light, Thrown (Range 20/60)",mast:"Nick",wt:"1 lb.",cost:"2 GP"},
+    {n:"Greatclub",dmg:"1d8 Bludgeoning",prop:"Two-Handed",mast:"Push",wt:"10 lb.",cost:"2 SP"},
+    {n:"Handaxe",dmg:"1d6 Slashing",prop:"Light, Thrown (Range 20/60)",mast:"Vex",wt:"2 lb.",cost:"5 GP"},
+    {n:"Javelin",dmg:"1d6 Piercing",prop:"Thrown (Range 30/120)",mast:"Slow",wt:"2 lb.",cost:"5 SP"},
+    {n:"Light Hammer",dmg:"1d4 Bludgeoning",prop:"Light, Thrown (Range 20/60)",mast:"Nick",wt:"2 lb.",cost:"2 GP"},
+    {n:"Mace",dmg:"1d6 Bludgeoning",prop:"—",mast:"Sap",wt:"4 lb.",cost:"5 GP"},
+    {n:"Quarterstaff",dmg:"1d6 Bludgeoning",prop:"Versatile (1d8)",mast:"Topple",wt:"4 lb.",cost:"2 SP"},
+    {n:"Sickle",dmg:"1d4 Slashing",prop:"Light",mast:"Nick",wt:"2 lb.",cost:"1 GP"},
+    {n:"Spear",dmg:"1d6 Piercing",prop:"Thrown (Range 20/60), Versatile (1d8)",mast:"Sap",wt:"3 lb.",cost:"1 GP"}
+  ],
+  "Simple Ranged":[
+    {n:"Dart",dmg:"1d4 Piercing",prop:"Finesse, Thrown (Range 20/60)",mast:"Vex",wt:"1/4 lb.",cost:"5 CP"},
+    {n:"Light Crossbow",dmg:"1d8 Piercing",prop:"Ammunition (Range 80/320; Bolt), Loading, Two-Handed",mast:"Slow",wt:"5 lb.",cost:"25 GP"},
+    {n:"Shortbow",dmg:"1d6 Piercing",prop:"Ammunition (Range 80/320; Arrow), Two-Handed",mast:"Vex",wt:"2 lb.",cost:"25 GP"},
+    {n:"Sling",dmg:"1d4 Bludgeoning",prop:"Ammunition (Range 30/120; Bullet)",mast:"Slow",wt:"—",cost:"1 SP"}
+  ],
+  "Martial Melee":[
+    {n:"Battleaxe",dmg:"1d8 Slashing",prop:"Versatile (1d10)",mast:"Topple",wt:"4 lb.",cost:"10 GP"},
+    {n:"Double-Bladed Scimitar",dmg:"2d4 Slashing",prop:"Special*, Two-Handed",mast:"Graze",wt:"6 lb.",cost:"100 GP",special:"*Special. If you attack with a double-bladed scimitar as part of the Attack action on your turn, you can use a bonus action immediately after to make a melee attack with it. This attack deals 1d4 slashing damage on a hit, instead of 2d4."},
+    {n:"Flail",dmg:"1d8 Bludgeoning",prop:"—",mast:"Sap",wt:"2 lb.",cost:"10 GP"},
+    {n:"Glaive",dmg:"1d10 Slashing",prop:"Heavy, Reach, Two-Handed",mast:"Graze",wt:"6 lb.",cost:"20 GP"},
+    {n:"Greataxe",dmg:"1d12 Slashing",prop:"Heavy, Two-Handed",mast:"Cleave",wt:"7 lb.",cost:"30 GP"},
+    {n:"Greatsword",dmg:"2d6 Slashing",prop:"Heavy, Two-Handed",mast:"Graze",wt:"6 lb.",cost:"50 GP"},
+    {n:"Halberd",dmg:"1d10 Slashing",prop:"Heavy, Reach, Two-Handed",mast:"Cleave",wt:"6 lb.",cost:"20 GP"},
+    {n:"Lance",dmg:"1d10 Piercing",prop:"Heavy, Reach, Two-Handed (unless mounted)",mast:"Topple",wt:"6 lb.",cost:"10 GP"},
+    {n:"Longsword",dmg:"1d8 Slashing",prop:"Versatile (1d10)",mast:"Sap",wt:"3 lb.",cost:"15 GP"},
+    {n:"Maul",dmg:"2d6 Bludgeoning",prop:"Heavy, Two-Handed",mast:"Topple",wt:"10 lb.",cost:"10 GP"},
+    {n:"Morningstar",dmg:"1d8 Piercing",prop:"—",mast:"Sap",wt:"4 lb.",cost:"15 GP"},
+    {n:"Pike",dmg:"1d10 Piercing",prop:"Heavy, Reach, Two-Handed",mast:"Push",wt:"18 lb.",cost:"5 GP"},
+    {n:"Rapier",dmg:"1d8 Piercing",prop:"Finesse",mast:"Vex",wt:"2 lb.",cost:"25 GP"},
+    {n:"Scimitar",dmg:"1d6 Slashing",prop:"Finesse, Light",mast:"Nick",wt:"3 lb.",cost:"25 GP"},
+    {n:"Shortsword",dmg:"1d6 Piercing",prop:"Finesse, Light",mast:"Vex",wt:"2 lb.",cost:"10 GP"},
+    {n:"Trident",dmg:"1d8 Piercing",prop:"Thrown (Range 20/60), Versatile (1d10)",mast:"Topple",wt:"4 lb.",cost:"5 GP"},
+    {n:"Warhammer",dmg:"1d8 Bludgeoning",prop:"Versatile (1d10)",mast:"Push",wt:"5 lb.",cost:"15 GP"},
+    {n:"War Pick",dmg:"1d8 Piercing",prop:"Versatile (1d10)",mast:"Sap",wt:"2 lb.",cost:"5 GP"},
+    {n:"Whip",dmg:"1d4 Slashing",prop:"Finesse, Reach",mast:"Slow",wt:"3 lb.",cost:"2 GP"}
+  ],
+  "Martial Ranged":[
+    {n:"Blowgun",dmg:"1 Piercing",prop:"Ammunition (Range 25/100; Needle), Loading",mast:"Vex",wt:"1 lb.",cost:"10 GP"},
+    {n:"Hand Crossbow",dmg:"1d6 Piercing",prop:"Ammunition (Range 30/120; Bolt), Light, Loading",mast:"Vex",wt:"3 lb.",cost:"75 GP"},
+    {n:"Heavy Crossbow",dmg:"1d10 Piercing",prop:"Ammunition (Range 100/400; Bolt), Heavy, Loading, Two-Handed",mast:"Push",wt:"18 lb.",cost:"50 GP"},
+    {n:"Longbow",dmg:"1d8 Piercing",prop:"Ammunition (Range 150/600; Arrow), Heavy, Two-Handed",mast:"Slow",wt:"2 lb.",cost:"50 GP"},
+    {n:"Musket",dmg:"1d12 Piercing",prop:"Ammunition (Range 40/120; Bullet), Loading, Two-Handed",mast:"Slow",wt:"10 lb.",cost:"500 GP"},
+    {n:"Pistol",dmg:"1d10 Piercing",prop:"Ammunition (Range 30/90; Bullet), Loading",mast:"Vex",wt:"3 lb.",cost:"250 GP"}
+  ]
+};
+const WEAPON_PROPERTIES=[
+  ["Ammunition","You can use a weapon that has the Ammunition property to make a ranged attack only if you have ammunition to fire from it. The type of ammunition required is specified with the weapon's range. Each attack expends one piece of ammunition. Drawing the ammunition is part of the attack (you need a free hand to load a one-handed weapon). After a fight, you can spend 1 minute to recover half the ammunition (round down) you used in the fight; the rest is lost."],
+  ["Finesse","When making an attack with a Finesse weapon, use your choice of your Strength or Dexterity modifier for the attack and damage rolls. You must use the same modifier for both rolls."],
+  ["Heavy","You have Disadvantage on attack rolls with a Heavy weapon if it's a Melee weapon and your Strength score isn't at least 13 or if it's a Ranged weapon and your Dexterity score isn't at least 13."],
+  ["Light","When you take the Attack action on your turn and attack with a Light weapon, you can make one extra attack as a Bonus Action later on the same turn. That extra attack must be made with a different Light weapon, and you don't add your ability modifier to the extra attack's damage unless that modifier is negative. For example, you can attack with a Shortsword in one hand and a Dagger in the other using the Attack action and a Bonus Action, but you don't add your Strength or Dexterity modifier to the damage roll of the Bonus Action unless that modifier is negative."],
+  ["Loading","You can fire only one piece of ammunition from a Loading weapon when you use an action, a Bonus Action, or a Reaction to fire it, regardless of the number of attacks you can normally make."],
+  ["Range","A Range weapon has a range in parentheses after the Ammunition or Thrown property. The range lists two numbers. The first is the weapon's normal range in feet, and the second is the weapon's long range. When attacking a target beyond normal range, you have Disadvantage on the attack roll. You can't attack a target beyond the long range."],
+  ["Reach","A Reach weapon adds 5 feet to your reach when you attack with it, as well as when determining your reach for Opportunity Attacks with it."],
+  ["Thrown","If a weapon has the Thrown property, you can throw the weapon to make a ranged attack, and you can draw that weapon as part of the attack. If the weapon is a Melee weapon, use the same ability modifier for the attack and damage rolls that you use for a melee attack with that weapon."],
+  ["Two-Handed","A Two-Handed weapon requires two hands when you attack with it."],
+  ["Versatile","A Versatile weapon can be used with one or two hands. A damage value in parentheses appears with the property. The weapon deals that damage when used with two hands to make a melee attack."],
+  ["Special","The weapon has special rules described in its own entry (e.g., the Double-Bladed Scimitar)."]
+];
+const WEAPON_MASTERY=[
+  ["Cleave","If you hit a creature with a melee attack roll using this weapon, you can make a melee attack roll with the weapon against a second creature within 5 feet of the first that is also within your reach. On a hit, the second creature takes the weapon's damage, but don't add your ability modifier to that damage unless that modifier is negative. You can make this extra attack only once per turn."],
+  ["Graze","If your attack roll with this weapon misses a creature, you can deal damage to that creature equal to the ability modifier you used to make the attack roll. This damage is the same type dealt by the weapon, and the damage can be increased only by increasing the ability modifier."],
+  ["Nick","When you make the extra attack of the Light property, you can make it as part of the Attack action instead of as a Bonus Action. You can make this extra attack only once per turn."],
+  ["Push","If you hit a creature with this weapon, you can push the creature up to 10 feet straight away from yourself if it is Large or smaller."],
+  ["Sap","If you hit a creature with this weapon, that creature has Disadvantage on its next attack roll before the start of your next turn."],
+  ["Slow","If you hit a creature with this weapon and deal damage to it, you can reduce its Speed by 10 feet until the start of your next turn. If the creature is hit more than once by weapons that have this property, the Speed reduction doesn't exceed 10 feet."],
+  ["Topple","If you hit a creature with this weapon, you can force the creature to make a Constitution saving throw (DC 8 plus the ability modifier used to make the attack roll and your Proficiency Bonus). On a failed save, the creature has the Prone condition."],
+  ["Vex","If you hit a creature with this weapon and deal damage to the creature, you have Advantage on your next attack roll against that creature before the end of your next turn."]
+];
+const AMMUNITION_DATA=[
+  ["Arrows","20","Quiver","1 lb.","1 GP"],
+  ["Bolts","20","Case","1 1/2 lb.","1 GP"],
+  ["Bullets, Firearm","10","Pouch","2 lb.","3 GP"],
+  ["Bullets, Sling","20","Pouch","1 1/2 lb.","4 CP"],
+  ["Needles","50","Pouch","1 lb.","1 GP"]
+];
+
+
+// ─── Armor reference data (PHB 2024) ───────────────────────────────────────────
+const ARMOR_DATA={
+  "Light Armor":[
+    {n:"Padded",ac:"11 + Dex modifier",str:"—",stealth:"Disadvantage",wt:"8 lb.",cost:"5 GP"},
+    {n:"Leather",ac:"11 + Dex modifier",str:"—",stealth:"—",wt:"10 lb.",cost:"10 GP"},
+    {n:"Studded Leather",ac:"12 + Dex modifier",str:"—",stealth:"—",wt:"13 lb.",cost:"45 GP"}
+  ],
+  "Medium Armor":[
+    {n:"Hide",ac:"12 + Dex modifier (max 2)",str:"—",stealth:"—",wt:"12 lb.",cost:"10 GP"},
+    {n:"Chain Shirt",ac:"13 + Dex modifier (max 2)",str:"—",stealth:"—",wt:"20 lb.",cost:"50 GP"},
+    {n:"Scale Mail",ac:"14 + Dex modifier (max 2)",str:"—",stealth:"Disadvantage",wt:"45 lb.",cost:"50 GP"},
+    {n:"Breastplate",ac:"14 + Dex modifier (max 2)",str:"—",stealth:"—",wt:"20 lb.",cost:"400 GP"},
+    {n:"Half Plate Armor",ac:"15 + Dex modifier (max 2)",str:"—",stealth:"Disadvantage",wt:"40 lb.",cost:"750 GP"}
+  ],
+  "Heavy Armor":[
+    {n:"Ring Mail",ac:"14",str:"—",stealth:"Disadvantage",wt:"40 lb.",cost:"30 GP"},
+    {n:"Chain Mail",ac:"16",str:"Str 13",stealth:"Disadvantage",wt:"55 lb.",cost:"75 GP"},
+    {n:"Splint Armor",ac:"17",str:"Str 15",stealth:"Disadvantage",wt:"60 lb.",cost:"200 GP"},
+    {n:"Plate Armor",ac:"18",str:"Str 15",stealth:"Disadvantage",wt:"65 lb.",cost:"1,500 GP"}
+  ],
+  "Shield":[
+    {n:"Shield",ac:"+2",str:"—",stealth:"—",wt:"6 lb.",cost:"10 GP"}
+  ]
+};
+const ARMOR_DON_DOFF=[
+  ["Light Armor","1 minute","1 minute"],["Medium Armor","5 minutes","1 minute"],["Heavy Armor","10 minutes","5 minutes"],["Shield","1 action (Utilize)","1 action (Utilize)"]
+];
+const ARMOR_RULES=[
+  ["Armor Training","Anyone can put on a suit of armor or strap a Shield to an arm, but only those with training can use them effectively. You gain a benefit from armor or a Shield only if you have training with it. If you wear armor or use a Shield you lack training with, you have Disadvantage on any D20 Test that involves Strength or Dexterity, and you can't cast spells."],
+  ["Armor Class","Armor determines your base Armor Class. Light armor adds your full Dexterity modifier; Medium armor adds your Dexterity modifier, to a maximum of +2; Heavy armor adds no Dexterity modifier. A Shield adds +2 to your AC and requires a free hand."],
+  ["One Armor at a Time","You can wear only one suit of armor at a time and benefit from only one Shield at a time."],
+  ["Strength Requirement","If the table shows a Strength score for a suit of armor, the armor reduces your Speed by 10 feet if your Strength score is lower than that number."],
+  ["Stealth","If the table shows \"Disadvantage\" in the Stealth column, you have Disadvantage on Dexterity (Stealth) checks while wearing that armor."],
+  ["Donning and Doffing","The time it takes to don or doff armor depends on its category, as shown in the Donning and Doffing Armor table. Donning a Shield or taking it off is a Utilize action."]
+];
+
+
+function WeaponReferenceModal({onClose}){
+  const {useState:us}=React;
+  const [q,setQ]=us("");
+  const [tab,setTab]=us("weapons"); // weapons | armor | properties | mastery | ammo
+  var ql=q.trim().toLowerCase();
+  function thStyle(){return {fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,textTransform:"uppercase",color:"rgba(201,74,42,.65)",textAlign:"left",padding:"4px 8px",borderBottom:"1px solid rgba(201,74,42,.2)",whiteSpace:"nowrap"};}
+  function tdStyle(){return {fontFamily:"'EB Garamond',serif",fontSize:12.5,color:"rgba(232,213,176,.85)",padding:"4px 8px",borderBottom:"1px solid rgba(201,74,42,.06)",verticalAlign:"top"};}
+  var tabBtn=function(k,lbl){return <span onClick={function(){setTab(k);}} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",padding:"4px 10px",borderRadius:2,userSelect:"none",border:"1px solid "+(tab===k?"rgba(201,74,42,.6)":"rgba(201,74,42,.2)"),color:tab===k?"#e07060":"rgba(232,213,176,.45)",background:tab===k?"rgba(201,74,42,.12)":"transparent"}}>{lbl}</span>;};
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div onClick={function(e){e.stopPropagation();}} style={{background:"#1a1410",border:"1px solid rgba(201,74,42,.4)",borderRadius:4,maxWidth:720,width:"100%",maxHeight:"86vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(0,0,0,.8)"}}>
+        <div style={{padding:"18px 22px 10px",borderBottom:"1px solid rgba(201,74,42,.15)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:1,color:"#e07060",flex:1}}>Weapons &amp; Armor Reference</span>
+            <div onClick={onClose} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:16,color:"rgba(232,213,176,.5)",lineHeight:1,padding:"0 4px"}}>×</div>
+          </div>
+          <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>{tabBtn("weapons","Weapons")}{tabBtn("armor","Armor")}{tabBtn("properties","Properties")}{tabBtn("mastery","Mastery")}{tabBtn("ammo","Ammunition")}</div>
+          {tab==="weapons"&&<input value={q} onChange={function(e){setQ(e.target.value);}} placeholder="Filter weapons..." style={{marginTop:10,width:"100%",background:"rgba(0,0,0,.3)",border:"1px solid rgba(201,74,42,.2)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:13,outline:"none",padding:"6px 8px",borderRadius:2}} />}
+        </div>
+        <div style={{overflowY:"auto",padding:"6px 0 14px"}}>
+          {tab==="weapons"&&Object.keys(WEAPON_DATA).map(function(cat){
+            var rows=WEAPON_DATA[cat].filter(function(w){return !ql||w.n.toLowerCase().indexOf(ql)>=0;});
+            if(rows.length===0) return null;
+            return (
+              <div key={cat} style={{marginBottom:6}}>
+                <div style={{fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1.5,textTransform:"uppercase",color:"#e07060",padding:"8px 22px 4px"}}>{cat} Weapons</div>
+                <div style={{padding:"0 14px"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse"}}>
+                    <thead><tr><th style={thStyle()}>Name</th><th style={thStyle()}>Damage</th><th style={thStyle()}>Properties</th><th style={thStyle()}>Mastery</th><th style={thStyle()}>Weight</th><th style={thStyle()}>Cost</th></tr></thead>
+                    <tbody>{rows.map(function(w){return <tr key={w.n}><td style={Object.assign({},tdStyle(),{fontWeight:600,color:"var(--gold-l)",whiteSpace:"nowrap"})}>{w.n}</td><td style={tdStyle()}>{w.dmg}</td><td style={tdStyle()}>{w.prop}</td><td style={Object.assign({},tdStyle(),{color:"#e07060"})}>{w.mast}</td><td style={Object.assign({},tdStyle(),{whiteSpace:"nowrap"})}>{w.wt}</td><td style={Object.assign({},tdStyle(),{whiteSpace:"nowrap"})}>{w.cost}</td></tr>;})}</tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+          {tab==="weapons"&&(function(){
+            var notes=[];
+            Object.keys(WEAPON_DATA).forEach(function(cat){WEAPON_DATA[cat].forEach(function(w){if(w.special&&(!ql||w.n.toLowerCase().indexOf(ql)>=0)) notes.push(w.special);});});
+            if(notes.length===0) return null;
+            return <div style={{padding:"8px 22px 0"}}>{notes.map(function(nt,i){return <div key={i} style={{fontFamily:"'EB Garamond',serif",fontSize:12,fontStyle:"italic",color:"rgba(232,213,176,.6)",lineHeight:1.55,marginTop:i>0?6:0}}>{nt}</div>;})}</div>;
+          })()}
+          {tab==="armor"&&<div style={{padding:"0 14px"}}>
+            {Object.keys(ARMOR_DATA).map(function(cat){return (
+              <div key={cat} style={{marginBottom:6}}>
+                <div style={{fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1.5,textTransform:"uppercase",color:"#e07060",padding:"8px 8px 4px"}}>{cat}</div>
+                <table style={{width:"100%",borderCollapse:"collapse"}}>
+                  <thead><tr><th style={thStyle()}>Name</th><th style={thStyle()}>Armor Class</th><th style={thStyle()}>Strength</th><th style={thStyle()}>Stealth</th><th style={thStyle()}>Weight</th><th style={thStyle()}>Cost</th></tr></thead>
+                  <tbody>{ARMOR_DATA[cat].map(function(a){return <tr key={a.n}><td style={Object.assign({},tdStyle(),{fontWeight:600,color:"var(--gold-l)",whiteSpace:"nowrap"})}>{a.n}</td><td style={tdStyle()}>{a.ac}</td><td style={tdStyle()}>{a.str}</td><td style={tdStyle()}>{a.stealth}</td><td style={tdStyle()}>{a.wt}</td><td style={tdStyle()}>{a.cost}</td></tr>;})}</tbody>
+                </table>
+              </div>);})}
+            <div style={{fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1.5,textTransform:"uppercase",color:"#e07060",padding:"12px 8px 4px"}}>Donning and Doffing Armor</div>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr><th style={thStyle()}>Category</th><th style={thStyle()}>Don</th><th style={thStyle()}>Doff</th></tr></thead>
+              <tbody>{ARMOR_DON_DOFF.map(function(r){return <tr key={r[0]}><td style={Object.assign({},tdStyle(),{fontWeight:600,color:"var(--gold-l)"})}>{r[0]}</td><td style={tdStyle()}>{r[1]}</td><td style={tdStyle()}>{r[2]}</td></tr>;})}</tbody>
+            </table>
+            <div style={{padding:"12px 8px 0"}}>{ARMOR_RULES.map(function(p){return <div key={p[0]} style={{marginBottom:10}}><span style={{fontFamily:"'EB Garamond',serif",fontSize:14,fontWeight:600,color:"#e07060"}}>{p[0]}. </span><span style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.8)",lineHeight:1.6}}>{p[1]}</span></div>;})}</div>
+          </div>}
+          {tab==="properties"&&<div style={{padding:"4px 22px"}}>{WEAPON_PROPERTIES.map(function(p){return <div key={p[0]} style={{marginBottom:10}}><span style={{fontFamily:"'EB Garamond',serif",fontSize:14,fontWeight:600,color:"var(--gold-l)"}}>{p[0]}. </span><span style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.8)",lineHeight:1.6}}>{p[1]}</span></div>;})}</div>}
+          {tab==="mastery"&&<div style={{padding:"4px 22px"}}>{WEAPON_MASTERY.map(function(p){return <div key={p[0]} style={{marginBottom:10}}><span style={{fontFamily:"'EB Garamond',serif",fontSize:14,fontWeight:600,color:"#e07060"}}>{p[0]}. </span><span style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.8)",lineHeight:1.6}}>{p[1]}</span></div>;})}</div>}
+          {tab==="ammo"&&<div style={{padding:"4px 14px"}}><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr><th style={thStyle()}>Type</th><th style={thStyle()}>Amount</th><th style={thStyle()}>Storage</th><th style={thStyle()}>Weight</th><th style={thStyle()}>Cost</th></tr></thead><tbody>{AMMUNITION_DATA.map(function(a){return <tr key={a[0]}><td style={Object.assign({},tdStyle(),{fontWeight:600,color:"var(--gold-l)"})}>{a[0]}</td><td style={tdStyle()}>{a[1]}</td><td style={tdStyle()}>{a[2]}</td><td style={tdStyle()}>{a[3]}</td><td style={tdStyle()}>{a[4]}</td></tr>;})}</tbody></table></div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
+
+// ─── Condition reference (PHB 2024 conditions) ─────────────────────────────────
+const CONDITION_DATA=[
+  {n:"Blinded",p:"p361",e:[["Can't See","You can't see and automatically fail any ability check that requires sight."],["Attacks Affected","Attack rolls against you have Advantage, and your attack rolls have Disadvantage."]]},
+  {n:"Burning",p:"Hazard",e:[["Fire Damage","A burning creature or object takes 1d4 Fire damage at the start of each of its turns."],["Extinguishing","As an action, you can extinguish fire on yourself by giving yourself the Prone condition and rolling on the ground."],["Other Ways to End","The fire also goes out if it is doused, submerged, or suffocated."]]},
+  {n:"Charmed",p:"p361",e:[["Can't Harm the Charmer","You can't attack the charmer or target the charmer with damaging abilities or magical effects."],["Social Advantage","The charmer has Advantage on any ability check to interact with you socially."]]},
+  {n:"Deafened",p:"p365",e:[["Can't Hear","You can't hear and automatically fail any ability check that requires hearing."]]},
+  {n:"Exhaustion",p:"p365",e:[["Exhaustion Levels","This condition is cumulative. Each time you receive it, you gain 1 Exhaustion level. You die if your Exhaustion level is 6."],["D20 Tests Affected","When you make a D20 Test the roll is reduced by 2 times your Exhaustion level."],["Speed Reduced","Your Speed is reduced by a number of feet equal to 5 times your Exhaustion level."],["Removing Exhaustion Levels","Finishing a Long Rest removes 1 of your Exhaustion levels. When your Exhaustion level reaches 0, the condition ends."]]},
+  {n:"Frightened",p:"p367",e:[["Ability Checks and Attacks Affected","You have Disadvantage on ability checks and attack rolls while the source of fear is within line of sight."],["Can't Approach","You can't willingly move closer to the source of fear."]]},
+  {n:"Grappled",p:"p367",e:[["Speed 0","Your Speed is 0 and can't increase."],["Attacks Affected","You have Disadvantage on attack rolls against any target other than the grappler."],["Movable","The grappler can drag or carry you when it moves, but every foot of movement costs it 1 extra foot unless you are Tiny or two or more sizes smaller than it."]]},
+  {n:"Incapacitated",p:"p369",e:[["Inactive","You can't take any action, Bonus Action, or Reaction."],["No Concentration","Your Concentration is broken."],["Speechless","You can't speak."],["Surprised","If you're Incapacitated when you roll Initiative, you have Disadvantage on the roll."]]},
+  {n:"Invisible",p:"p370",e:[["Surprise","If you're Invisible when you roll Initiative, you have Advantage on the roll."],["Concealed","You aren't affected by any effect that requires its target to be seen unless the effect's creator can somehow see you. Any equipment you are wearing or carrying is also concealed."],["Attacks Affected","Attack rolls against you have Disadvantage, and your attack rolls have Advantage. If a creature can somehow see you, you don't gain this benefit against that creature."]]},
+  {n:"Paralyzed",p:"p371",e:[["Incapacitated","You have the Incapacitated condition."],["Speed 0","Your Speed is 0 and can't increase."],["Saving Throws Affected","You automatically fail Strength and Dexterity saving throws."],["Attacks Affected","Attack rolls against you have Advantage."],["Automatic Critical Hits","Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet of you."]]},
+  {n:"Petrified",p:"p372",e:[["Turned to Inanimate Substance","You are transformed, along with any nonmagical objects you are wearing and carrying, into a solid inanimate substance (usually stone). Your weight increases by a factor of ten, and you cease aging."],["Incapacitated","You have the Incapacitated condition."],["Speed 0","Your Speed is 0 and can't increase."],["Attacks Affected","Attack rolls against you have Advantage."],["Saving Throws Affected","You automatically fail Strength and Dexterity saving throws."],["Resist Damage","You have Resistance to all damage."],["Poison Immunity","You have Immunity to the Poisoned condition."]]},
+  {n:"Poisoned",p:"p372",e:[["Ability Checks and Attacks Affected","You have Disadvantage on attack rolls and ability checks."]]},
+  {n:"Prone",p:"p372",e:[["Restricted Movement","Your only movement options are to crawl or to spend an amount of movement equal to half your Speed (round down) to right yourself and thereby end the condition. If your Speed is 0, you can't right yourself."],["Attacks Affected","You have Disadvantage on attack rolls. An attack roll against you has Advantage if the attacker is within 5 feet of you. Otherwise, that attack roll has Disadvantage."]]},
+  {n:"Restrained",p:"p373",e:[["Speed 0","Your Speed is 0 and can't increase."],["Attacks Affected","Attack rolls against you have Advantage, and your attack rolls have Disadvantage."],["Saving Throws Affected","You have Disadvantage on Dexterity saving throws."]]},
+  {n:"Stunned",p:"p376",e:[["Incapacitated","You have the Incapacitated condition."],["Saving Throws Affected","You automatically fail Strength and Dexterity saving throws."],["Attacks Affected","Attack rolls against you have Advantage."]]},
+  {n:"Unconscious",p:"p376",e:[["Inert","You have the Incapacitated and Prone conditions, and you drop whatever you're holding. When this condition ends, you remain Prone."],["Speed 0","Your Speed is 0 and can't increase."],["Attacks Affected","Attack rolls against you have Advantage."],["Saving Throws Affected","You automatically fail Strength and Dexterity saving throws."],["Automatic Critical Hits","Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet of you."],["Unaware","You're unaware of your surroundings."]]}
+];
+
+function ConditionReferenceModal({onClose}){
+  const {useState:us}=React;
+  const [open,setOpen]=us({});
+  const [q,setQ]=us("");
+  function toggle(n){setOpen(function(e){var x=Object.assign({},e);x[n]=!x[n];return x;});}
+  var list=CONDITION_DATA.filter(function(t){return !q.trim()||t.n.toLowerCase().indexOf(q.toLowerCase())>=0;});
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div onClick={function(e){e.stopPropagation();}} style={{background:"#1a1410",border:"1px solid rgba(56,178,172,.4)",borderRadius:4,maxWidth:560,width:"100%",maxHeight:"82vh",display:"flex",flexDirection:"column",boxShadow:"0 8px 40px rgba(0,0,0,.8)"}}>
+        <div style={{padding:"18px 22px 10px",borderBottom:"1px solid rgba(56,178,172,.15)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:1,color:"rgba(56,178,172,.9)",flex:1}}>Conditions (PHB 2024)</span>
+            <div onClick={onClose} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:16,color:"rgba(232,213,176,.5)",lineHeight:1,padding:"0 4px"}}>×</div>
+          </div>
+          <input value={q} onChange={function(e){setQ(e.target.value);}} placeholder="Filter conditions..." style={{marginTop:10,width:"100%",background:"rgba(0,0,0,.3)",border:"1px solid rgba(56,178,172,.2)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:13,outline:"none",padding:"6px 8px",borderRadius:2}} />
+        </div>
+        <div style={{overflowY:"auto",padding:"4px 0"}}>
+          {list.map(function(t){
+            var isO=open[t.n];
+            return (
+              <div key={t.n} style={{borderBottom:"1px solid rgba(56,178,172,.07)"}}>
+                <div onClick={function(){toggle(t.n);}} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 22px",cursor:"pointer"}}>
+                  <span style={{fontFamily:"'Cinzel',serif",fontSize:11,color:"rgba(56,178,172,.4)",width:12,flexShrink:0}}>{isO?"−":"+"}</span>
+                  <span style={{fontFamily:"'EB Garamond',serif",fontSize:14,color:"rgba(56,178,172,.9)",fontWeight:600,flex:1}}>{t.n}</span>
+                  <span style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,color:"rgba(232,213,176,.25)"}}>{t.p}</span>
+                </div>
+                {isO&&<div style={{padding:"2px 22px 14px 44px"}}>
+                  {t.e.map(function(eff,ei){
+                    return <div key={ei} style={{marginBottom:7}}>
+                      <span style={{fontFamily:"'EB Garamond',serif",fontSize:13.5,fontWeight:600,color:"var(--gold-l)"}}>{eff[0]}. </span>
+                      <span style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.8)",lineHeight:1.6}}>{eff[1]}</span>
+                    </div>;
+                  })}
+                </div>}
+              </div>
+            );
+          })}
+          {list.length===0&&<div style={{padding:"18px 22px",fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.3)"}}>No matching condition.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+// ──────────────────────────────────────────────────────────────────────────────
+
+
+// ─── Species Compendium (races.md) ───────────────────────────────────────────
+const SPECIES_MD_URL="https://raw.githubusercontent.com/liapatiso95-ctrl/character-sheet/main/races.md";
+const _speciesCache={data:null,status:"idle"};
+const _speciesListeners=[];
+function _notifySpeciesListeners(){_speciesListeners.forEach(function(fn){fn();});}
+
+// Parse the "Complete Guide to Sapient Species" Homebrewery markdown.
+// Returns {key:{name,blurb,groups:[{label,feats:[{name,desc,cost,hasCost}]}]}}.
+// Each "## Species" heading is one entry; "###" headings open subspecies groups;
+// traits are lines that start with **Name. *(N points)*** and run until the next trait.
+function parseSpeciesMd(text){
+  var out={};
+  if(!text) return out;
+  text=text.replace(/\r/g,"");
+  var si=text.search(/^# Species\s*$/m);
+  if(si>=0) text=text.slice(si).replace(/^# Species\s*$/m,"");
+  // Re-join costs split over a line break: "(3\npoints)"
+  text=text.replace(/\(\s*(\d+)\s*\n\s*(points?)/gi,"($1 $2");
+  var sections=text.split(/^## +/m).slice(1);
+  sections.forEach(function(sec){
+    var nl=sec.indexOf("\n");
+    var name=(nl<0?sec:sec.slice(0,nl)).trim();
+    if(!name) return;
+    var body=nl<0?"":sec.slice(nl+1);
+    var parts=body.split(/^### +/m);
+    var groups=[],blurb="";
+    parts.forEach(function(part,pi){
+      var label,chunk;
+      if(pi===0){label="General Traits";chunk=part;}
+      else{var n2=part.indexOf("\n");label=(n2<0?part:part.slice(0,n2)).trim();chunk=n2<0?"":part.slice(n2+1);}
+      var feats=_parseSpeciesTraits(chunk);
+      if(pi===0){
+        // flavor text = everything before the first #### heading / first trait
+        var cut=chunk.search(/^#### |^\*\*[^*\n]+?\.[^\n]*?\*\*/m);
+        blurb=_cleanSpeciesText(cut<0?chunk:chunk.slice(0,cut)).split(/\n\s*\n/)[0]||"";
+      }
+      if(feats.length) groups.push({label:label,feats:feats});
+    });
+    if(!groups.length) return;
+    // Resolve "Darkvision + 1 point" style costs against the species' own traits
+    var allF=[];groups.forEach(function(g){g.feats.forEach(function(f){allF.push(f);});});
+    allF.forEach(function(f){
+      if(f._ref){
+        var base=0,rl=f._ref.toLowerCase().trim();
+        for(var i=0;i<allF.length;i++){if(allF[i]!==f&&allF[i].name.toLowerCase()===rl&&allF[i]._own!=null){base=allF[i]._own;break;}}
+        if(!base){var gen={darkvision:3};base=gen[rl]||0;}
+        f.cost=base+f._refAdd;
+      }
+      delete f._ref;delete f._refAdd;delete f._own;
+    });
+    out[name.toLowerCase()]={name:name,key:name.toLowerCase(),blurb:blurb,groups:groups};
+  });
+  return out;
+}
+function _cleanSpeciesText(t){
+  return (t||"").replace(/^\\(page|column|columnbreak)\s*$/gm,"").replace(/^\{\{pageNumber[^}]*\}\}\s*$/gm,"")
+    .replace(/^#### .*$/gm,"").replace(/^\s*<!--[\s\S]*?-->\s*$/gm,"").replace(/[ \t]+$/gm,"").replace(/\n{3,}/g,"\n\n").trim();
+}
+function _parseSpeciesTraits(chunk){
+  var lines=chunk.split("\n"),feats=[],cur=null;
+  function flush(){
+    if(!cur) return;
+    var d=_cleanSpeciesText(cur.lines.join("\n"));
+    // Cost written at the end of the paragraph: ***(1 point)***
+    if(!cur.hasCost){
+      var m=d.match(/\*{2,3}\(\s*(\d+)\s*points?\s*\)\*{2,3}/i);
+      if(m){cur.cost=parseInt(m[1]);cur.hasCost=true;cur._own=cur.cost;d=d.replace(m[0],"").replace(/[ \t]+\n/g,"\n").trim();}
+    }
+    cur.desc=d;delete cur.lines;
+    feats.push(cur);cur=null;
+  }
+  lines.forEach(function(line){
+    var m=line.match(/^\*\*(.+?)\*\*\*?(?!\*)(.*)$/);
+    var hdr=m?m[1]:"";
+    // A trait line looks like "Name. *(N points)*" / "Name. (N Points)" / "Name."
+    var tm=m&&hdr.match(/^([^.:*()]+?)[.:](?:\s+(.*))?$/);
+    if(tm&&!/^\s*-/.test(line)){
+      flush();
+      var nm=tm[1].trim(),costTxt=tm[2]||"";
+      cur={name:nm,desc:"",cost:0,hasCost:false,lines:[(m[2]||"").trim()]};
+      if(costTxt){
+        var nums=[],re=/(\d+)\s*points?/gi,mm;
+        while((mm=re.exec(costTxt))) nums.push(parseInt(mm[1]));
+        var rf=costTxt.match(/\(\s*([A-Za-z' ]+?)\s*\+\s*(\d+)\s*points?/i);
+        if(rf){cur._ref=rf[1];cur._refAdd=parseInt(rf[2]);cur.hasCost=true;}
+        else if(nums.length){cur.cost=nums.reduce(function(a,b){return a+b;},0);cur.hasCost=true;cur._own=cur.cost;}
+      }
+    } else if(cur){
+      cur.lines.push(line);
+    }
+  });
+  flush();
+  return feats.filter(function(f){return !/^(Age|Subspecies|Heritage Trait)$/i.test(f.name);});
+}
+
+function useSpeciesCompendium(){
+  const [tick,setTick]=React.useState(0);
+  React.useEffect(function(){
+    function onUpdate(){setTick(function(t){return t+1;});}
+    _speciesListeners.push(onUpdate);
+    if(_speciesCache.status==="idle"){
+      _speciesCache.status="loading";_speciesCache.data={};
+      fetch(SPECIES_MD_URL)
+        .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.text();})
+        .then(function(text){
+          var md=parseSpeciesMd(text);_speciesCache.data=md;
+          _speciesCache.status=Object.keys(md).length?"ready":"error";
+        })
+        .catch(function(){_speciesCache.status="error";})
+        .finally(function(){_notifySpeciesListeners();});
+    }
+    return function(){var i=_speciesListeners.indexOf(onUpdate);if(i>=0)_speciesListeners.splice(i,1);};
+  },[]);
+  return _speciesCache;
+}
+
+
+// ─── Species filters (same + | ! syntax as the other compendiums) ─────────────
+const SPECIES_FILTER_EMPTY={name:"",trait:"",desc:"",costMin:"",costMax:""};
+function speciesFilterActive(f){return !!(f.name.trim()||f.trait.trim()||f.desc.trim()||(""+f.costMin).trim()||(""+f.costMax).trim());}
+function speciesFeatFilterActive(f){return !!(f.trait.trim()||f.desc.trim()||(""+f.costMin).trim()||(""+f.costMax).trim());}
+function filterSpecies(list,f){
+  // A species is listed when at least one of its traits matches the trait / description / cost
+  // filters; it is then shown with ALL of its traits (matching ones are flagged _hit).
+  var cmin=parseFloat(f.costMin),cmax=parseFloat(f.costMax),ff=speciesFeatFilterActive(f),out=[];
+  list.forEach(function(sp){
+    if(f.name.trim()&&!matchQuery(sp.name+" "+sp.groups.map(function(g){return g.label;}).join(" "),f.name)) return;
+    var any=false;
+    var groups=sp.groups.map(function(g){
+      return {label:g.label,feats:g.feats.map(function(ft){
+        var hit=ff&&matchQuery(ft.name,f.trait)&&matchQuery(ft.desc,f.desc)&&(isNaN(cmin)||ft.cost>=cmin)&&(isNaN(cmax)||ft.cost<=cmax);
+        if(hit) any=true;
+        return Object.assign({},ft,{_hit:hit});
+      })};
+    });
+    if(ff&&!any) return;
+    out.push(Object.assign({},sp,{groups:groups,_filtered:ff}));
+  });
+  return out.sort(function(a,b){return a.name.localeCompare(b.name);});
+}
+function SpeciesFilterBar({f,setF,inputStyle}){
+  const [help,setHelp]=React.useState(false);
+  const set=function(k,v){setF(Object.assign({},f,{[k]:v}));};
+  const active=speciesFilterActive(f);
+  const qhKey={fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:700,color:"var(--arcane)",textAlign:"center"};
+  const qhEx={fontFamily:"monospace",fontSize:12,color:"var(--gold-l)",background:"rgba(0,0,0,.3)",padding:"1px 5px",borderRadius:2};
+  const num=Object.assign({},inputStyle,{width:64,flex:"0 0 auto"});
+  return (
+    <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center",position:"relative"}}>
+      <input value={f.name} onChange={function(e){set("name",e.target.value);}} placeholder="Name contains..." style={Object.assign({},inputStyle,{flex:"1 1 180px",minWidth:140})} />
+      <input value={f.trait} onChange={function(e){set("trait",e.target.value);}} placeholder="Trait contains..." style={Object.assign({},inputStyle,{flex:"1 1 150px",minWidth:120})} />
+      <input value={f.desc} onChange={function(e){set("desc",e.target.value);}} placeholder="Description contains..." style={Object.assign({},inputStyle,{flex:"1 1 170px",minWidth:130})} />
+      <input value={f.costMin} onChange={function(e){set("costMin",e.target.value.replace(/[^\d.]/g,""));}} placeholder="Min pts" title="Minimum trait cost" style={num} />
+      <input value={f.costMax} onChange={function(e){set("costMax",e.target.value.replace(/[^\d.]/g,""));}} placeholder="Max pts" title="Maximum trait cost" style={num} />
+      <div onClick={function(){setHelp(!help);}} title="How to write complex search queries"
+        style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:"1px solid rgba(123,79,207,.5)",color:"var(--arcane)",background:help?"rgba(123,79,207,.2)":"rgba(123,79,207,.08)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'EB Garamond',serif",fontSize:14,fontWeight:700,userSelect:"none"}}>?</div>
+      <div onClick={function(){if(active)setF(SPECIES_FILTER_EMPTY);}} title="Clear all species filters"
+        style={{flexShrink:0,cursor:active?"pointer":"default",opacity:active?1:.4,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",border:"1px solid rgba(201,74,42,.45)",color:"#e07060",background:"rgba(201,74,42,.1)",padding:"5px 10px",borderRadius:2,userSelect:"none",whiteSpace:"nowrap"}}>✕ Clear filters</div>
+      {help&&(
+        <div style={{position:"absolute",top:"100%",right:0,marginTop:6,zIndex:300,width:"min(420px,92vw)",background:"#1a1410",border:"1px solid rgba(123,79,207,.4)",borderRadius:3,padding:"14px 16px",boxShadow:"0 6px 28px rgba(0,0,0,.6)"}}>
+          <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:8}}>
+            <span style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:"var(--arcane)"}}>Search Syntax</span>
+            <span onClick={function(){setHelp(false);}} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.4)"}}>close ✕</span>
+          </div>
+          <div style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.8)",lineHeight:1.7}}>
+            The Name, Trait and Description boxes understand these operators (plain words match as “contains”, case-insensitive):
+            <div style={{marginTop:8,display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 12px",alignItems:"baseline"}}>
+              <span style={qhKey}>+</span><span><b>AND</b> — both terms must appear. <span style={qhEx}>fire+resistance</span></span>
+              <span style={qhKey}>|</span><span><b>OR</b> — either term may appear. <span style={qhEx}>darkvision|flight</span></span>
+              <span style={qhKey}>!</span><span><b>NOT</b> — term must <i>not</i> appear. <span style={qhEx}>!poison</span></span>
+            </div>
+            <div style={{marginTop:10}}><b>+</b> binds tighter than <b>|</b>, so <span style={qhEx}>a+b|c</span> means <i>(a and b) or c</i>.</div>
+            <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid rgba(123,79,207,.18)"}}>
+              Trait / Description / Min–Max pts list every species that has a matching trait, with all of its traits; the matching traits are highlighted. <b>Name</b> matches the species or any of its subspecies.
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpeciesListPanel(){
+  const cache=useSpeciesCompendium();
+  const [fl,setFl]=React.useState(SPECIES_FILTER_EMPTY);
+  const [open,setOpen]=React.useState({});
+  const inputStyle={background:"rgba(0,0,0,.35)",border:"1px solid rgba(201,150,42,.25)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:14,padding:"6px 10px",outline:"none",borderRadius:2};
+  const list=(cache.status==="ready"&&cache.data)?Object.values(cache.data):[];
+  const nq=fl.name.trim();
+  const shown=filterSpecies(list,fl);
+  return (
+    <div>
+      <SpeciesFilterBar f={fl} setF={setFl} inputStyle={inputStyle} />
+      <div style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.4)",marginBottom:8}}>{shown.length} species</div>
+      {shown.length>0&&<EcRail onExpand={function(){var o={};shown.forEach(function(sp){o[sp.key]=true;});setOpen(o);}} onCollapse={function(){var o={};shown.forEach(function(sp){o[sp.key]=false;});setOpen(o);}} />}
+      {shown.length===0&&<div style={{padding:"20px",textAlign:"center",fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.3)"}}>
+        {cache.status==="loading"?"Loading species…":cache.status==="error"?"Species file unavailable — add races.md to the repo.":"No matches."}
+      </div>}
+      {shown.map(function(sp){
+        var isOpen=open[sp.key]!==undefined?!!open[sp.key]:(sp._filtered||(nq.length>2&&sp.groups.length<4));
+        return (
+          <div key={sp.key} style={{background:"rgba(0,0,0,.25)",border:"1px solid rgba(201,150,42,.15)",borderLeft:"3px solid var(--gold)",padding:"10px 14px",marginBottom:8}}>
+            <div onClick={function(){var o=Object.assign({},open);o[sp.key]=!isOpen;setOpen(o);}} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+              <span style={{fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:1,color:"var(--gold-l)",fontWeight:600,flex:1}}>{sp.name}</span>
+              {sp.groups.length>1&&<span style={{fontFamily:"'EB Garamond',serif",fontSize:12,color:"rgba(232,213,176,.4)"}}>{sp.groups.length-1} subspecies</span>}
+              <span style={{fontFamily:"'Cinzel',serif",fontSize:13,color:"rgba(201,150,42,.7)"}}>{isOpen?"▾":"▸"}</span>
+            </div>
+            {isOpen&&<div style={{marginTop:8}}>
+              {sp.blurb&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.5)",lineHeight:1.5,marginBottom:10}}>{sp.blurb}</div>}
+              {sp.groups.map(function(g){
+                var gTotal=g.feats.reduce(function(a,f){return a+f.cost;},0);
+                return (
+                  <div key={g.label} style={{marginBottom:12,borderTop:"1px solid rgba(201,150,42,.12)",paddingTop:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+                      <span style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:"var(--gold)",flex:1}}>{g.label}</span>
+                      <span style={{fontFamily:"'Cinzel',serif",fontSize:10,color:"rgba(232,213,176,.5)"}}>{gTotal} pts</span>
+                    </div>
+                    {g.feats.map(function(f){
+                      return (
+                        <div key={f.name} style={{padding:"4px 0 6px",borderBottom:"1px dashed rgba(201,150,42,.08)",background:f._hit?"rgba(201,150,42,.1)":undefined,boxShadow:f._hit?"inset 2px 0 0 var(--gold)":undefined,paddingLeft:f._hit?6:0}}>
+                          <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+                            <span style={{flex:1,fontFamily:"'Cinzel',serif",fontSize:12,letterSpacing:.5,color:"var(--gold-l)",fontWeight:600}}>{f.name}</span>
+                            <span style={{fontFamily:"'Cinzel',serif",fontSize:10,color:f.hasCost?"var(--gold-l)":"rgba(232,213,176,.3)"}}>{f.hasCost?f.cost+" pt"+(f.cost===1?"":"s"):"—"}</span>
+                          </div>
+                          <div style={{fontFamily:"'EB Garamond',serif",fontSize:14,lineHeight:1.55,color:"var(--parch)"}}><Markdown text={f.desc} /></div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CompendiumPage({onAddCreature}){
   var c={spellClasses:[],exploitClasses:[],sp:{},inv:[],expl:{},creatures:[],fts:[]};
   var s=function(){};
@@ -3771,6 +4337,7 @@ function CompendiumPage({onAddCreature}){
   React.useEffect(function(){
     if(!includeSrd){setSrdResults([]);return;}
     if(kind==="exploits"){setSrdResults([]);return;} // no SRD API for exploits
+    if(kind==="species"){setSrdResults([]);return;}
     var qq=(query||descQuery||"").trim();
     if(qq.length<2){setSrdResults([]);return;}
     if(debounceRef.current) clearTimeout(debounceRef.current);
@@ -4027,16 +4594,16 @@ function CompendiumPage({onAddCreature}){
       <div className="sh" style={{display:"flex",alignItems:"center"}}>
         <span>Compendium Search</span>
         {(function(){
-          var st=kind==="spells"?spellCache.status:kind==="feats"?featCache.status:kind==="exploits"?exploitCache.status:kind==="creatures"?creatureCache.status:itemCache.status;
+          var st=kind==="spells"?spellCache.status:kind==="feats"?featCache.status:kind==="exploits"?exploitCache.status:kind==="creatures"?creatureCache.status:kind==="species"?_speciesCache.status:itemCache.status;
           var col=st==="ready"?"rgba(74,156,92,.6)":st==="loading"?"rgba(201,150,42,.5)":"rgba(201,74,42,.5)";
           var lbl=st==="ready"?"Compendium file loaded":st==="loading"?"Loading compendium file…":"Compendium file unavailable (offline or missing)";
           return <span title={lbl} style={{display:"inline-flex",alignItems:"center",gap:4,fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,color:col,userSelect:"none",marginLeft:"auto",fontWeight:"normal",textTransform:"uppercase"}}>
             <span style={{width:6,height:6,borderRadius:"50%",background:col,display:"inline-block",flexShrink:0}} />
-            {kind==="spells"?"Spells":kind==="feats"?"Feats":kind==="exploits"?"Exploits":kind==="creatures"?"Creatures":"Items"} File
+            {kind==="spells"?"Spells":kind==="feats"?"Feats":kind==="exploits"?"Exploits":kind==="creatures"?"Creatures":kind==="species"?"Species":"Items"} File
           </span>;
         })()}
       </div>
-      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>{tabBtn("spells","Spells")}{tabBtn("feats","Feats")}{tabBtn("items","Items")}{tabBtn("exploits","Exploits")}
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>{tabBtn("spells","Spells")}{tabBtn("feats","Feats")}{tabBtn("items","Items")}{tabBtn("exploits","Exploits")}{tabBtn("species","Species")}
         {creaturesEnabled
           ? tabBtn("creatures","Creatures")
           : <span onClick={function(){window.__confirm("The monster compendium is a reference and prep tool — best for creatures you control (summons, wild shape, companions) and for DMs.\n\nPlease don't use it to metagame: looking up an enemy's AC, HP, weaknesses, or tactics that your character wouldn't know can spoil encounters and undercut your DM. Use it responsibly and follow your table's norms.\n\nDo you agree?",function(){setCreaturesEnabled(true);switchKind("creatures");},"Agree");}}
@@ -4046,13 +4613,15 @@ function CompendiumPage({onAddCreature}){
             </span>}
       </div>
 
+      {kind==="species"&&<SpeciesListPanel />}
+      {kind!=="species"&&(<React.Fragment>
       {/* Search controls */}
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8,alignItems:"center",position:"relative"}}>
         <input value={query} onChange={function(e){setQuery(e.target.value);}} placeholder="Name contains..." style={Object.assign({},inputStyle,{flex:"1 1 160px",minWidth:140})} />
         <input value={descQuery} onChange={function(e){setDescQuery(e.target.value);}} placeholder="Description contains..." style={Object.assign({},inputStyle,{flex:"1 1 160px",minWidth:140})} />
         <div onClick={function(){setShowQueryHelp(function(v){return !v;});}}
           title="How to write complex search queries"
-          style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:"1px solid rgba(123,79,207,.5)",color:"var(--arcane)",background:showQueryHelp?"rgba(123,79,207,.2)":"rgba(123,79,207,.08)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'EB Garamond',serif",fontSize:14,fontStyle:"italic",fontWeight:700,userSelect:"none"}}>i</div>
+          style={{flexShrink:0,width:24,height:24,borderRadius:"50%",border:"1px solid rgba(123,79,207,.5)",color:"var(--arcane)",background:showQueryHelp?"rgba(123,79,207,.2)":"rgba(123,79,207,.08)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'EB Garamond',serif",fontSize:14,fontWeight:700,userSelect:"none"}}>?</div>
         <div onClick={function(){if(hasActiveFilters)clearFilters();}}
           title="Clear this list's filters and search"
           style={{flexShrink:0,cursor:hasActiveFilters?"pointer":"default",opacity:hasActiveFilters?1:.4,
@@ -4326,6 +4895,7 @@ function CompendiumPage({onAddCreature}){
         );
       })()}
       {/* Summon: pick which spellcasting class drives spell attack / ability mod */}
+      </React.Fragment>)}
       {crAdd&&(
         <div onClick={function(){setCrAdd(null);}}
           style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.7)",zIndex:100000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
@@ -5276,11 +5846,21 @@ function App(){
   const doSaveAs=function(){fileHandle.current=null;doSave();};
   const doImport=function(ev){var f=ev.target.files&&ev.target.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){try{var d=JSON.parse(rd.result);window.__confirm("Load this file? It will replace your current combat and notes.",function(){if(d.combat)setCombat(d.combat);if(d.notes&&typeof d.notes==="object"){var n=d.notes;NOTE_KEYS.forEach(function(k){if(!Array.isArray(n[k]))n[k]=[];});setNotes(n);}},"Load");}catch(e){alert("Invalid JSON file: "+e.message);}};rd.readAsText(f);ev.target.value="";};
   const tabBtn=function(id,label,col){var on=tab===id;return <div onClick={function(){setTab(id);}} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1.5,textTransform:"uppercase",padding:"8px 18px",borderRadius:2,userSelect:"none",border:"1px solid rgba("+col+",."+(on?"7":"25")+")",color:on?"rgba("+col+",1)":"rgba(232,213,176,.5)",background:on?"rgba("+col+",.15)":"transparent"}}>{label}</div>;};
+  const [refOpen,setRefOpen]=React.useState(null);
   return <div style={{minHeight:"100vh",padding:"16px 14px 60px"}}>
     <style>{CSS}</style>
+    {refOpen==="wpn"&&<WeaponReferenceModal onClose={function(){setRefOpen(null);}} />}
+    {refOpen==="tool"&&<ToolReferenceModal onClose={function(){setRefOpen(null);}} />}
+    {refOpen==="cond"&&<ConditionReferenceModal onClose={function(){setRefOpen(null);}} />}
     <div style={{maxWidth:980,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18,flexWrap:"wrap"}}>
         <div style={{flex:1,display:"flex",alignItems:"baseline",gap:8}}><span style={{fontFamily:"'Cinzel Decorative',cursive",fontSize:18,color:GOLDL,letterSpacing:1}}>Dungeon Master Screen</span></div>
+        <div style={{display:"flex",gap:6,alignItems:"center",paddingRight:10,marginRight:2,borderRight:"1px solid rgba(201,150,42,.2)"}}>
+          <span style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1.5,textTransform:"uppercase",color:"rgba(232,213,176,.35)"}}>Reference</span>
+          <div onClick={function(){setRefOpen("wpn");}} style={btn("201,74,42")} title="Weapons & Armor reference (PHB 2024)">⚔ Weapons &amp; Armor</div>
+          <div onClick={function(){setRefOpen("tool");}} style={btn("201,150,42")} title="Tool reference">⚒ Tools</div>
+          <div onClick={function(){setRefOpen("cond");}} style={btn("56,178,172")} title="Conditions reference (incl. Burning)">☠ Conditions</div>
+        </div>
         <div onClick={doSave} style={btn("201,150,42")} title="Save everything to a JSON file (choose location & name)">Save</div>
         <div onClick={doSaveAs} style={btn("201,150,42")} title="Save to a new file / location">Save As</div>
         <div onClick={function(){if(fileRef.current)fileRef.current.click();}} style={btn("201,150,42")} title="Load from a JSON file">Load</div>
@@ -5309,7 +5889,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.4.1</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.6.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
