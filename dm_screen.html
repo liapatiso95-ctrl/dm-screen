@@ -6012,6 +6012,30 @@ function PlayerSheetPanel({c,upd,onClose}){
   var isKnownCls=function(n){var l2=sh.spellClasses||[];for(var i=0;i<l2.length;i++){if((n&&l2[i].nm===n)||(!n&&l2.length===1))return !!l2[i].known;}return false;};
   var spLv=[];for(var l=0;l<=9;l++){var arr=(sh.sp&&sh.sp[l])||[];if(arr.length)spLv.push([l,arr]);}
   var spCount=spLv.reduce(function(t,x){return t+x[1].length;},0);
+  // Spells per class (class order as on the sheet), levels inside, prepared spells first for classes that prepare.
+  var spGroups=(function(){
+    var order=[],by={};
+    (sh.spellClasses||[]).forEach(function(x){if(x&&x.nm&&!by[x.nm]){by[x.nm]=[];order.push(x.nm);}});
+    var other=[];
+    for(var l=0;l<=9;l++){((sh.sp&&sh.sp[l])||[]).forEach(function(sp){var n=sp&&sp.cls;if(n){if(!by[n]){by[n]=[];order.push(n);}by[n].push([l,sp]);}else other.push([l,sp]);});}
+    var names=order.filter(function(n){return by[n].length>0;}),out=[];
+    var mk=function(n,items){
+      var known=isKnownCls(n),lv=[];
+      for(var l=0;l<=9;l++){
+        var arr=items.filter(function(x){return x[0]===l;}).map(function(x){return x[1];});
+        if(l>0&&!known)arr=arr.filter(function(x){return x.prep||x.bonus;}).concat(arr.filter(function(x){return !(x.prep||x.bonus);}));
+        if(arr.length)lv.push([l,arr]);
+      }
+      var sc=(sh.spellClasses||[]).filter(function(x){return x&&x.nm===n;})[0];
+      var st={cant:0,cantB:0,lev:0,levB:0,prep:0,max:null,known:!!(sc&&sc.known)};
+      items.forEach(function(x){var sp=x[1],l=x[0];if(l===0){if(sp.bonus)st.cantB++;else st.cant++;}else if(sp.bonus)st.levB++;else{st.lev++;if(sp.prep)st.prep++;}});
+      if(sc&&sc.maxPrepFormula){var f=sc.maxPrepFormula;try{st.max=PS.computeBonusFromFormula({flat:f.flat||"",abls:f.abls||[],profs:f.profs||[],lvlEntries:f.lvlEntries||[]},sh);}catch(e){}}
+      return {cls:n,lv:lv,st:st};
+    };
+    names.forEach(function(n){out.push(mk(n,by[n]));});
+    if(other.length)out.push(mk("",other));
+    return out;
+  })();
   var slots=[];for(var s2=1;s2<=9;s2++){var mx=psN((sh.slotMax||{})[s2]);if(mx>0)slots.push([s2,mx,mx-psN((sh.slotExp||{})[s2])]);}
   var ptsMax=sh.spellPtsFormula?PS.computeBonusFromFormula(sh.spellPtsFormula,sh):psN(sh.spellPtsMax);
   var feats=[["Class features",sh.feat],["Feats",sh.fts],["Species features",sh.spec]];
@@ -6065,8 +6089,14 @@ function PlayerSheetPanel({c,upd,onClose}){
             </div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
               <PsChip k="Level" v={d.level}/><PsChip k="Pass. Perc" v={d.passP}/><PsChip k="Pass. Ins" v={d.passI}/><PsChip k="Pass. Inv" v={d.passV}/>
+            </div>
+            <div style={{display:"grid",gap:4,gridTemplateColumns:"repeat(auto-fill,minmax(118px,1fr))"}}>
+              {(sh.classes||[]).filter(function(cl){return cl&&(cl.nm||"").trim()&&(parseInt(cl.lv)||0)>0;}).map(function(cl,i,all){var mx=parseInt(cl.lv)||0,sp2=Math.min(mx,parseInt((sh.hdExp||{})[cl.nm])||0);return <PsChip key={"hd"+i} wrap k={"Hit dice"+(all.length>1?" · "+cl.nm:"")+" ("+(cl.hd||"d6")+")"} v={sp2+" spent / "+mx} col={sp2>=mx?"224,112,96":undefined}/>;})}
+            </div>
+            <div style={{display:"grid",gap:4,gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))"}}>
               {d.casters.map(function(x,i){return <PsChip key={"dc"+i} wrap k={x.nm+" ("+x.abl+") DC / Atk"} v={x.dc+" / "+psF(x.atk)} col="184,154,240"/>;})}
               {d.otherDcs.map(function(x,i){var m=/^class:(\d+):/.exec(x.key||"");var cn=m&&sh.classes&&sh.classes[+m[1]]?sh.classes[+m[1]].nm:"";return <PsChip key={"od"+i} wrap k={(x.label||"DC")+(cn?" · "+cn:"")} v={x.value} col="184,154,240"/>;})}
+
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(6,minmax(0,1fr))",gap:4}}>
               {d.mods.map(function(m,i){var sv=d.saves[i];return <div key={m.a} style={{textAlign:"center",border:"1px solid rgba(201,150,42,.3)",borderRadius:3,background:"rgba(0,0,0,.25)",padding:"3px 0"}}>
@@ -6102,7 +6132,7 @@ function PlayerSheetPanel({c,upd,onClose}){
               body={(w.parts.length||w.note)?<div><div style={psMeta}>{w.parts.join(" + ")}</div><PsDesc text={w.note}/></div>:null}/>;})}
           </PsSection>
           <PsSection id="skills" label="Skills" count={d.skills.filter(function(s){return s.prof;}).length+" prof"} open={open} setOpen={setOpen}>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:"1px 14px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:"1px 14px"}}>
               {d.skills.map(function(s){return <div key={s.n} style={{display:"flex",justifyContent:"space-between",gap:6,fontFamily:"'EB Garamond',serif",fontSize:13,color:skCol(s),borderBottom:"1px solid rgba(201,150,42,.07)"}}>
                 <span>{s.exp?"◆ ":s.prof?"● ":"○ "}{s.n} <span style={{fontSize:10,opacity:.55}}>{s.a}</span></span><b style={{fontFamily:"'Cinzel',serif",fontSize:12}}>{psF(s.v)}</b></div>;})}
             </div>
@@ -6113,12 +6143,20 @@ function PlayerSheetPanel({c,upd,onClose}){
               {ptsMax>0&&<span style={{fontFamily:"'Cinzel',serif",fontSize:11,border:"1px solid rgba(201,150,42,.4)",borderRadius:3,padding:"1px 6px",color:GOLDL}}>Points {ptsMax-psN(sh.spellPtsUsed)}/{ptsMax}</span>}
             </div>}
             {spLv.length===0&&<div style={psMeta}>No spells.</div>}
-            {spLv.map(function(g){return <div key={g[0]} style={{marginBottom:6}}>
+            {spGroups.map(function(grp,gi){return <div key={gi} style={{marginBottom:8}}>
+              {spGroups.length>1&&<div style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:"#c8b4f4",borderBottom:"1px solid rgba(184,154,240,.3)",marginBottom:4}}>{grp.cls||"Other spells"}</div>}
+              <div style={Object.assign({},psMeta,{marginBottom:4})}>{(function(){var t=grp.st,o=[];
+                if(t.cant||t.cantB)o.push(t.cant+" cantrip"+(t.cant!==1?"s":"")+(t.cantB?" +"+t.cantB+" bonus":""));
+                if(t.known)o.push("Known "+t.lev+(t.levB?" +"+t.levB+" bonus":""));
+                else o.push("Prepared "+t.prep+(t.max!=null?" / "+t.max:"")+(t.levB?" +"+t.levB+" bonus":"")+" · "+t.lev+" spell"+(t.lev!==1?"s":""));
+                return o.join(" · ");})()}</div>
+              {grp.lv.map(function(g){return <div key={g[0]} style={{marginBottom:6}}>
               <div style={Object.assign({},lbl,{color:"rgba(184,154,240,.7)",marginBottom:2})}>{g[0]===0?"Cantrips":"Level "+g[0]}</div>
               {g[1].map(function(sp,i){var det2=[sp.ti,sp.rng,sp.cmp,sp.dur].filter(Boolean).join(" · ");return <PsToggleRow key={i}
                 head={<span style={psName}>{sp.nm||"—"}{sp.conc&&psTag("C")}{sp.ritual&&psTag("R")}{sp.bonus&&psTag("Bonus","201,150,42")}{!sp.prep&&!sp.bonus&&g[0]>0&&!isKnownCls(sp.cls)&&psTag("Not prep","232,213,176")}</span>}
-                sub={sp.cls?<span style={psMeta}>{sp.cls}</span>:null}
+                sub={sp.cls&&spGroups.length<2?<span style={psMeta}>{sp.cls}</span>:null}
                 body={(det2||sp.nt)?<div>{det2&&<div style={psMeta}>{det2}</div>}<PsDesc text={sp.nt}/></div>:null}/>;})}
+            </div>;})}
             </div>;})}
           </PsSection>
           <PsSection id="features" label="Features & Feats" count={featCount} open={open} setOpen={setOpen}>
@@ -6583,7 +6621,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.12.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.14.1</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
