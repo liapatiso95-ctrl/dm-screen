@@ -5827,7 +5827,50 @@ function getCharDCSources(c){
   });
   return out;
 }
-return {getTotal:getTotal,getMod:getMod,computeBonusFromFormula:computeBonusFromFormula,getCharDCSources:getCharDCSources};
+function computeCarriedWeight(c){
+  if(!c) return 0;
+  var coins=function(cur){var r=cur||{};return (parseFloat(r.cp)||0)+(parseFloat(r.sp)||0)+(parseFloat(r.ep)||0)+(parseFloat(r.gp)||0)+(parseFloat(r.pp)||0);};
+  var itemWeight=function(it){return it.wl?0:(parseFloat(it.wt)||0)*(it.qt===''||it.qt===undefined||it.qt===null?1:(parseFloat(it.qt)||0));};
+  var sumItems=function(arr){return (arr||[]).reduce(function(s,it){return s+itemWeight(it);},0);};
+  var invW=sumItems(c.inv);
+  var attW=sumItems(c.attuned_inv);
+  var coinW=coins(c.cur)*0.02; // main pouch coins only
+  var bags=c.bags||[];
+  var bagSelf=bags.reduce(function(t,b){return t+(b&&b.selfWeight!=null?(parseFloat(b.selfWeight)||0):5);},0);
+  var bagContents=bags.reduce(function(t,b){
+    var weightlessInside=b?b.weightless!==false:true;
+    if(weightlessInside) return t;
+    return t+sumItems(b.inv)+coins(b.cur)*0.02;
+  },0);
+  return invW+attW+coinW+bagSelf+bagContents;
+}
+
+// Single source of truth for everything encumbrance-related, so the Speed penalty
+// (Page1) and the encumbrance bar (Page2) are guaranteed to stay in sync. Returns
+// the carried weight, the three thresholds, the speed penalty (in feet, or the
+// "overcap" sentinel), and the status label/color. Capacity uses total STR
+// (incl. bonuses), the flat carry bonus, and the carry multiplier.
+function computeEncumbrance(c){
+  c=c||{};
+  var str=getTotal(c,"STR")||10;
+  var carryFlat=parseFloat(c.carryBonus||0)||0;
+  var carryMult=parseFloat(c.carryMult||1)||1;
+  var thresh=function(n){return (str*n+carryFlat)*carryMult;};
+  var enc1=thresh(5);    // encumbered
+  var enc2=thresh(10);   // heavily encumbered
+  var capacity=thresh(15); // max carry
+  var weight=computeCarriedWeight(c);
+  var penalty=weight>capacity?"overcap":(weight>=enc2?-20:(weight>=enc1?-10:0));
+  var level=weight<enc1?0:(weight<enc2?1:(weight<=capacity?2:3)); // 0 none,1 enc,2 heavy,3 over
+  var color=["#4a9c5c","#c9962a","#e07030","#c94a2a"][level];
+  var label=["Unencumbered",
+             "Encumbered (-10 ft speed)",
+             "Heavily Encumbered (-20 ft speed, disadv. STR/DEX/CON checks)",
+             "Over Capacity (speed 5 ft, disadv. STR/DEX/CON checks, cannot jump)"][level];
+  return {weight:weight,enc1:enc1,enc2:enc2,capacity:capacity,penalty:penalty,level:level,color:color,label:label};
+}
+
+return {getTotal:getTotal,getMod:getMod,computeBonusFromFormula:computeBonusFromFormula,getCharDCSources:getCharDCSources,computeEncumbrance:computeEncumbrance};
 })();
 const PS_ABL=["STR","DEX","CON","INT","WIS","CHA"];
 const PS_SKILLS=[["Acrobatics","DEX"],["Animal Handling","WIS"],["Arcana","INT"],["Athletics","STR"],["Deception","CHA"],["History","INT"],["Insight","WIS"],["Intimidation","CHA"],["Investigation","INT"],["Medicine","WIS"],["Nature","INT"],["Perception","WIS"],["Performance","CHA"],["Persuasion","CHA"],["Religion","INT"],["Sleight of Hand","DEX"],["Stealth","DEX"],["Survival","WIS"]];
@@ -5887,7 +5930,8 @@ function psDerive(c){
   var acMap=c.acAbls&&!Array.isArray(c.acAbls)?c.acAbls:{};
   var acAbl=Object.keys(acMap).filter(function(k){return acMap[k]&&acMap[k].on;}).reduce(function(t,k){var raw=mod(k);var cap=parseInt(acMap[k].cap||"")||null;return t+(cap!==null?Math.min(raw,cap):raw);},0);
   var ac=(parseInt(c.acBase||0)||0)+acAbl+(c.acBonFormula?cf(c.acBonFormula):(parseInt(c.acBon||0)||0));
-  var speed=Math.max(0,(parseInt(c.spdBase||30)||30)+(parseInt(c.spdBon||0)||0)+exhSpd);
+  var enc=PS.computeEncumbrance(c);
+  var speed=enc.penalty==="overcap"?Math.max(0,5+exhSpd):Math.max(0,(parseInt(c.spdBase||30)||30)+(parseInt(c.spdBon||0)||0)+exhSpd+enc.penalty);
   // initiative
   var f=c.iniFormula, init;
   if(f){init=cf(Object.assign({},f,{abls:f.abls||["DEX"]}));}else{init=mod("DEX");}
@@ -5908,7 +5952,7 @@ function psDerive(c){
   });
   var otherDcs=PS.getCharDCSources(c).filter(function(x){return (""+x.key).indexOf("spell:")!==0;});
   var spellAbl=casters.length?casters[0].abl:"";
-  return {checks:checks,level:level,pb:pb,exh:exh,ac:ac,speed:speed,init:init,hpMax:hpMax,hpCur:hpCur,hpTemp:hpTemp,skills:skills,saves:saves,casters:casters,otherDcs:otherDcs,spellAbl:spellAbl,
+  return {enc:enc,checks:checks,level:level,pb:pb,exh:exh,ac:ac,speed:speed,init:init,hpMax:hpMax,hpCur:hpCur,hpTemp:hpTemp,skills:skills,saves:saves,casters:casters,otherDcs:otherDcs,spellAbl:spellAbl,
     passP:10+byName("Perception").v+(c.percAdv?5:0),passI:10+byName("Insight").v+(c.insAdv?5:0),passV:10+byName("Investigation").v+(c.invAdv?5:0),
     mods:PS_ABL.map(function(a){return {a:a,score:PS.getTotal(c,a),m:mod(a)};}),
     weapons:(c.wpn||[]).map(function(w){
@@ -6053,8 +6097,11 @@ function PlayerSheetPanel({c,upd,onClose}){
   var coinTxt=function(o){return COIN.filter(function(k){return coinN(o[k])>0;}).map(function(k){return coinN(o[k])+" "+k;}).join(" · ");};
   var coins=coinTxt(coinSum);
   var coinWhere=wallets.filter(function(w){return coinTxt(w[1]);}).map(function(w){return w[0]+": "+coinTxt(w[1]);});
-  var armor=psList(sh.profA&&sh.profA.armor,[]).concat(psList(sh.profA&&sh.profA.weapons,sh.profA&&sh.profA.custom));
-  var tools=psList(sh.profT&&sh.profT.tools,sh.profT&&sh.profT.custom);
+  // All simple / martial weapons ticked: say "Simple Weapons" instead of listing every weapon.
+  var wmap=(sh.profA&&sh.profA.weapons)||{},wrest=Object.assign({},wmap),wgrp=[];
+  ["Simple","Martial"].forEach(function(g){var nm=[];Object.keys(WEAPON_DATA).forEach(function(cat){if(cat.indexOf(g)===0)WEAPON_DATA[cat].forEach(function(w){nm.push(w.n);});});if(nm.length&&nm.every(function(n){return wmap[n];})){wgrp.push(g+" Weapons");nm.forEach(function(n){delete wrest[n];});}});
+  var armor=psList(sh.profA&&sh.profA.armor,[]).concat(wgrp,psList(wrest,sh.profA&&sh.profA.custom));
+  var tools=psList(sh.profT&&sh.profT.tools,sh.profT&&sh.profT.custom).map(function(n){var kd=n==="Musical Instrument"?(((sh.profT.meta||{})[n]||{}).kind||"").trim():"";return kd?n+" ("+kd+")":n;});
   var langs=psList(sh.profL&&sh.profL.langs,sh.profL&&sh.profL.custom);
   [["aprof",armor],["tprof",tools],["lang",langs]].forEach(function(p){if(sh[p[0]]&&(""+sh[p[0]]).trim())p[1].push(sh[p[0]]);});
   var res=sh.dmgRes||{};
@@ -6098,6 +6145,20 @@ function PlayerSheetPanel({c,upd,onClose}){
               {d.otherDcs.map(function(x,i){var m=/^class:(\d+):/.exec(x.key||"");var cn=m&&sh.classes&&sh.classes[+m[1]]?sh.classes[+m[1]].nm:"";return <PsChip key={"od"+i} wrap k={(x.label||"DC")+(cn?" · "+cn:"")} v={x.value} col="184,154,240"/>;})}
 
             </div>
+            {(function(){var e=d.enc,cap=e.capacity||1,pc=Math.max(0,Math.min(1,e.weight/cap)),fx=["","Encumbered: speed −10 ft","Heavily encumbered: speed −20 ft, disadvantage on STR/DEX/CON checks","Over capacity: speed 5 ft, disadvantage on STR/DEX/CON checks, can't jump"][e.level];
+              var f1=function(n){return (Math.round(n*10)/10).toString();};
+              return <div title={e.label} style={{border:"1px solid rgba(201,150,42,.3)",borderRadius:3,background:"rgba(0,0,0,.25)",padding:"4px 8px"}}>
+                <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+                  <span style={{fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",color:"rgba(232,213,176,.55)",flex:1}}>Carrying</span>
+                  <b style={{fontFamily:"'Cinzel',serif",fontSize:13,color:e.color}}>{f1(e.weight)} / {f1(cap)} lb</b>
+                </div>
+                <div style={{position:"relative",height:9,marginTop:4,borderRadius:5,background:"rgba(255,255,255,.08)",overflow:"hidden"}}>
+                  <div style={{position:"absolute",left:0,top:0,bottom:0,width:(pc*100)+"%",background:e.color,borderRadius:5}}/>
+                  <div style={{position:"absolute",top:0,bottom:0,left:(e.enc1/cap*100)+"%",width:1,background:"rgba(0,0,0,.6)"}}/>
+                  <div style={{position:"absolute",top:0,bottom:0,left:(e.enc2/cap*100)+"%",width:1,background:"rgba(0,0,0,.6)"}}/>
+                </div>
+                <div style={{fontFamily:"'EB Garamond',serif",fontSize:12,marginTop:3,color:e.level?e.color:"rgba(232,213,176,.5)",lineHeight:1.25}}>{e.level?fx:"Unencumbered"} <span style={{opacity:.55,color:"rgba(232,213,176,.7)"}}>· encumbered at {f1(e.enc1)}, heavily at {f1(e.enc2)}</span></div>
+              </div>;})()}
             <div style={{display:"grid",gridTemplateColumns:"repeat(6,minmax(0,1fr))",gap:4}}>
               {d.mods.map(function(m,i){var sv=d.saves[i];return <div key={m.a} style={{textAlign:"center",border:"1px solid rgba(201,150,42,.3)",borderRadius:3,background:"rgba(0,0,0,.25)",padding:"3px 0"}}>
                 <div style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,color:"rgba(232,213,176,.5)"}}>{m.a}</div>
@@ -6621,7 +6682,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.14.1</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.15.1</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
