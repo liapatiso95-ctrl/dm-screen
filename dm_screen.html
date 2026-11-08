@@ -5939,9 +5939,9 @@ function PsSection({id,label,count,open,setOpen,children}){
     {on&&<div style={{padding:"4px 12px 12px"}}>{children}</div>}
   </div>;
 }
-function PsChip({k,v,col}){
-  return <div style={{flex:"1 1 0",minWidth:44,textAlign:"center",border:"1px solid rgba("+(col||"201,150,42")+",.3)",borderRadius:3,background:"rgba(0,0,0,.25)",padding:"3px 4px"}}>
-    <div style={{fontFamily:"'Cinzel',serif",fontSize:7,letterSpacing:1,color:"rgba(232,213,176,.45)",textTransform:"uppercase",whiteSpace:"nowrap"}}>{k}</div>
+function PsChip({k,v,col,wrap}){
+  return <div style={{flex:wrap?"1 1 96px":"1 1 0",minWidth:wrap?96:44,maxWidth:wrap?"100%":undefined,textAlign:"center",border:"1px solid rgba("+(col||"201,150,42")+",.3)",borderRadius:3,background:"rgba(0,0,0,.25)",padding:"3px 4px"}}>
+    <div style={{fontFamily:"'Cinzel',serif",fontSize:7,letterSpacing:1,color:"rgba(232,213,176,.45)",textTransform:"uppercase",whiteSpace:wrap?"normal":"nowrap",lineHeight:wrap?1.2:undefined}}>{k}</div>
     <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:600,color:PARCH,lineHeight:1.15}}>{v}</div>
   </div>;
 }
@@ -6056,8 +6056,8 @@ function PlayerSheetPanel({c,upd,onClose}){
             </div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
               <PsChip k="Level" v={d.level}/><PsChip k="Pass. Perc" v={d.passP}/><PsChip k="Pass. Ins" v={d.passI}/><PsChip k="Pass. Inv" v={d.passV}/>
-              {d.casters.map(function(x,i){return <PsChip key={"dc"+i} k={d.casters.length>1?x.nm.slice(0,6)+" DC/Atk":"DC / Atk"} v={x.dc+" / "+psF(x.atk)} col="184,154,240"/>;})}
-              {d.otherDcs.map(function(x,i){return <PsChip key={"od"+i} k={(x.label||"DC").replace(/\s*\(.*\)$/,"").slice(0,12)} v={x.value} col="184,154,240"/>;})}
+              {d.casters.map(function(x,i){return <PsChip key={"dc"+i} wrap k={x.nm+" ("+x.abl+") DC / Atk"} v={x.dc+" / "+psF(x.atk)} col="184,154,240"/>;})}
+              {d.otherDcs.map(function(x,i){var m=/^class:(\d+):/.exec(x.key||"");var cn=m&&sh.classes&&sh.classes[+m[1]]?sh.classes[+m[1]].nm:"";return <PsChip key={"od"+i} wrap k={(x.label||"DC")+(cn?" · "+cn:"")} v={x.value} col="184,154,240"/>;})}
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(6,minmax(0,1fr))",gap:4}}>
               {d.mods.map(function(m,i){var sv=d.saves[i];return <div key={m.a} style={{textAlign:"center",border:"1px solid rgba(201,150,42,.3)",borderRadius:3,background:"rgba(0,0,0,.25)",padding:"3px 0"}}>
@@ -6124,7 +6124,16 @@ function PlayerSheetPanel({c,upd,onClose}){
           </PsSection>
           {expl.length>0&&<PsSection id="exploits" label="Exploits" count={expl.length} open={open} setOpen={setOpen}>
             {sh.exploitDice!==""&&sh.exploitDice!=null&&<div style={Object.assign({},psMeta,{marginBottom:4})}>Dice {psN(sh.exploitDice)-psN(sh.exploitDiceExp)}/{psN(sh.exploitDice)} ({sh.exploitDie||"d4"})</div>}
-            {expl.map(function(x,i){var e=x[1]||{};return <PsToggleRow key={i} head={<span style={psName}>{e.nm||e.name||"—"}{psTag("T"+x[0],"201,150,42")}</span>} sub={null} body={e.nt||e.ds?<PsDesc text={e.nt||e.ds}/>:null}/>;})}
+            {expl.map(function(x,i){var e=x[1]||{};
+              var hasB=!!((e.exec||"").trim()||(e.prereq||"").trim()||(e.nt||"").trim()||(e.desc||"").trim());
+              return <PsToggleRow key={i}
+                head={<span style={Object.assign({},psName,e.used?{opacity:.5,textDecoration:"line-through"}:null)}>{e.nm||e.name||"—"}</span>}
+                sub={<span style={{whiteSpace:"nowrap"}}>{e.cls&&psTag(e.cls)}{psTag("Degree "+x[0],"201,150,42")}{e.used&&psTag("Used","224,112,96")}{(e.uses||"").trim()&&<span style={Object.assign({},psMeta,{marginLeft:6})}>{e.uses}</span>}</span>}
+                body={hasB?<div>
+                  {(e.exec||"").trim()&&<div style={psMeta}>Execution: {e.exec}</div>}
+                  {(e.prereq||"").trim()&&<div style={psMeta}>Prerequisites: {e.prereq}</div>}
+                  {(e.nt||"").trim()&&<div style={psMeta}>{e.nt}</div>}
+                  <PsDesc text={e.desc}/></div>:null}/>;})}
           </PsSection>}
           <PsSection id="inv" label="Inventory" count={invAll.length} open={open} setOpen={setOpen}>
             {<div style={{marginBottom:6}}>
@@ -6422,7 +6431,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.9.1</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.9.2</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
