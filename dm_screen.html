@@ -6176,11 +6176,11 @@ function PlayerSheetPanel({c,upd,onClose}){
             </div>}
             {(d.exh>0||sh.ins||(res.res&&res.res.length)||(res.imm&&res.imm.length)||(res.vul&&res.vul.length)||(cr.adv&&cr.adv.length)||(cr.imm&&cr.imm.length)||senses.length>0)&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:12,color:"rgba(232,213,176,.75)",lineHeight:1.45}}>
               {(d.exh>0||sh.ins)&&<div>{d.exh>0&&<span style={{color:"#e07060",marginRight:8}}>Exhaustion {d.exh}</span>}{sh.ins&&<span style={{color:GOLDL}}>Inspired</span>}</div>}
-              {res.res&&res.res.length>0&&<div><b style={{color:"#7cc98a"}}>Resist</b> {L(res.res)}</div>}
-              {res.imm&&res.imm.length>0&&<div><b style={{color:GOLDL}}>Immune</b> {L(res.imm)}</div>}
-              {res.vul&&res.vul.length>0&&<div><b style={{color:"#e07060"}}>Vulnerable</b> {L(res.vul)}</div>}
-              {cr.imm&&cr.imm.length>0&&<div><b style={{color:"#4fc3bd"}}>Condition immune</b> {L(cr.imm)}</div>}
-              {cr.adv&&cr.adv.length>0&&<div><b style={{color:"#7cc98a"}}>Adv. on saves vs</b> {L(cr.adv)}</div>}
+              {res.res&&res.res.length>0&&<div><b style={{color:"#7cc98a"}}>Damage Resistances</b> {L(res.res)}</div>}
+              {res.imm&&res.imm.length>0&&<div><b style={{color:GOLDL}}>Damage Immunities</b> {L(res.imm)}</div>}
+              {res.vul&&res.vul.length>0&&<div><b style={{color:"#e07060"}}>Damage Vulnerabilities</b> {L(res.vul)}</div>}
+              {cr.imm&&cr.imm.length>0&&<div><b style={{color:"#4fc3bd"}}>Condition Immunities</b> {L(cr.imm)}</div>}
+              {cr.adv&&cr.adv.length>0&&<div><b style={{color:"#7cc98a"}}>Adv. on Saving Throws against</b> {L(cr.adv)}</div>}
               {senses.length>0&&<div><b style={{color:"#8ab4e8"}}>Senses</b> {senses.join(", ")}</div>}
             </div>}
             {phys&&<div style={psMeta}>{phys}</div>}
@@ -6682,7 +6682,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.15.1</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.16.1</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
