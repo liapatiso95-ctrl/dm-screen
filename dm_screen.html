@@ -5513,6 +5513,14 @@ function CombatTracker({combat,setCombat,setLightbox,onAddCreature}){
   const flashTimer=useRef(null);
   const showFlash=function(entry){setFlash(entry);if(flashTimer.current)clearTimeout(flashTimer.current);flashTimer.current=setTimeout(function(){setFlash(null);},3500);};
   const pushRoll=function(entry){setRolls(function(p){return [entry,...p].slice(0,20);});showFlash(entry);};
+  const pushRollRef=useRef(pushRoll);pushRollRef.current=pushRoll;
+  const updRollRef=useRef(null);updRollRef.current=function(e){var found=false;setRolls(function(p){return p.map(function(r){if(r.sid===e.sid){found=true;return Object.assign({},e,{id:r.id,update:false});}return r;});});showFlash(e);};
+  useEffect(function(){
+    var drain=function(){var q=window.__dmRollQueue||[];window.__dmRollQueue=[];q.forEach(function(e){if(e.update)updRollRef.current(e);else pushRollRef.current(e);});};
+    drain();
+    window.addEventListener("dm-sync-roll",drain);
+    return function(){window.removeEventListener("dm-sync-roll",drain);};
+  },[]);
   const rollCustom=function(){var r=rollExpression(customExpr);if(!r){setCustomErr(true);return;}setCustomErr(false);pushRoll({id:uid(),name:"Custom",label:customExpr.trim(),detail:r.detail,total:r.total});};
   const doRoll=function(name,it,id){var r=rollItem(it);pushRoll({id:uid(),name:name,label:it.label,detail:r.detail,total:r.total});if(it.isInit&&id)upd(id,{init:r.total});};
   const openRoller=function(id){setRoller(function(p){return {id:id,x:p?p.x:Math.max(8,Math.round(window.innerWidth/2)-150),y:p?p.y:90};});};
@@ -5696,6 +5704,7 @@ function CombatRow({c,isTurn,upd,remove,setLightbox,onOpenRoller}){
       </div>
       {c.type!=="pc"&&<label title="Roll death saves automatically on this creature's turn while it is at 0 HP" style={{display:"inline-flex",alignItems:"center",gap:3,cursor:"pointer",fontFamily:"'EB Garamond',serif",fontSize:12,color:c.deathSaves?"#e07060":"rgba(232,213,176,.5)",userSelect:"none"}}><input type="checkbox" checked={!!c.deathSaves} onChange={function(e){upd(c.id,{deathSaves:e.target.checked,dsOk:0,dsBad:0});}} style={{margin:0}}/>☠ Death saves</label>}
       {c.type!=="pc"&&c.deathSaves&&((c.hp||0)<=0||dst.ok>0||dst.bad>0)&&<DsDots ok={dst.ok} bad={dst.bad} onSet={function(k,n){upd(c.id,k==="ok"?{dsOk:n}:{dsBad:n});}}/>}
+      {c.type==="pc"&&c.sheet&&((c.hp||0)<=0||dst.ok>0||dst.bad>0)&&<span title="Death saves (from the player's sheet)" style={{display:"inline-flex",alignItems:"center",gap:4}}><span style={{fontSize:12}}>☠</span><DsDots ok={dst.ok} bad={dst.bad}/></span>}
       <div title="Damage / heal amount" style={{display:"flex",alignItems:"center",gap:3,marginLeft:"auto"}}>
         <span style={{fontSize:13,color:"#c9a02a"}}>⚡</span>
         <input value={dmg} onChange={function(e){setDmg(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")applyDmg(-1);}} placeholder="#" style={Object.assign({},inp,{width:38,textAlign:"center",padding:"3px 2px"})}/>
@@ -6213,6 +6222,7 @@ function SyncButton({combat,setCombat}){
   const [draft,setDraft]=useState({url:"",room:""});
   const comb=useRef(combat);comb.current=combat;
   const busy=useRef(false);
+  const seenRolls=useRef(null);
   const live=cfg.on&&cfg.url&&cfg.room;
   const saveCfg=function(n){setCfg(n);try{localStorage.setItem(SYNC_KEY,JSON.stringify(n));}catch(e){}};
   const poll=async function(c0){
@@ -6225,6 +6235,30 @@ function SyncButton({combat,setCombat}){
       if(!r.ok)throw new Error("HTTP "+r.status);
       var meta=(await r.json())||{};
       setFound(meta);
+      try{
+        var rr=await fetch(b+"/rolls.json");
+        if(rr.ok){
+          var all=(await rr.json())||{};
+          var first=!seenRolls.current;
+          if(first)seenRolls.current={};
+          Object.keys(all).forEach(function(pid){
+            var arr=all[pid];arr=Array.isArray(arr)?arr:Object.keys(arr||{}).map(function(k){return arr[k];});
+            arr.filter(Boolean).slice().reverse().forEach(function(e){
+              if(!e||!e.id)return;
+              var ver=e.v||0,prevV=seenRolls.current[e.id];
+              if(prevV!==undefined&&prevV>=ver)return;
+              seenRolls.current[e.id]=ver;
+              if(first)return;
+              var pc=(comb.current.combatants||[]).filter(function(y){return y.syncId===pid;})[0];
+              var nm=(pc&&pc.name)||(meta[pid]&&meta[pid].name)||"Player";
+              var entry={id:uid(),sid:e.id,name:nm,label:e.label||"Roll",detail:e.detail||"",total:e.total,update:prevV!==undefined};
+              if(e.init&&pc)setCombat((function(cid,t){return function(p){return Object.assign({},p,{combatants:(p.combatants||[]).map(function(y){return y.id===cid?Object.assign({},y,{init:t}):y;})});};})(pc.id,e.total));
+              window.__dmRollQueue=(window.__dmRollQueue||[]).concat([entry]);
+              try{window.dispatchEvent(new Event("dm-sync-roll"));}catch(x){}
+            });
+          });
+        }
+      }catch(e){}
       var list=(comb.current.combatants||[]).slice();
       for(var i=0;i<list.length;i++){
         var x=list[i],m=x.syncId&&meta[x.syncId];
@@ -6241,8 +6275,9 @@ function SyncButton({combat,setCombat}){
   };
   useEffect(function(){
     if(!live)return;
+    seenRolls.current=null;
     poll();
-    var iv=setInterval(function(){poll();},5000);
+    var iv=setInterval(function(){poll();},1000);
     return function(){clearInterval(iv);};
   },[cfg.on,cfg.url,cfg.room]);
   const addPlayer=async function(id){
@@ -6548,7 +6583,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.10.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.12.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
