@@ -5535,18 +5535,22 @@ function CombatTracker({combat,setCombat,setLightbox,onAddCreature}){
   const rollCreatures=function(){rollInitSet(true);};
   const rollAll=function(){rollInitSet(false);};
 
-  const startCombat=function(){if(!order.length)return;setCombat(function(p){return Object.assign({},p,{started:true,round:1,turnId:sortOrder(p.combatants||[])[0].id});});};
+  const combatRef=useRef(combat);combatRef.current=combat;
+  const applyTurnStart=function(p,id){var logs=[];var cs=(p.combatants||[]).map(function(c){if(c.id!==id)return c;var st=dsRollStep(c);if(!st)return c;logs.push(st.log);return Object.assign({},c,st.patch);});return {cs:cs,logs:logs};};
+  const startCombat=function(){if(!order.length)return;var p=combatRef.current;var first=sortOrder(p.combatants||[])[0];var r=applyTurnStart(p,first.id);setCombat(Object.assign({},p,{combatants:r.cs,started:true,round:1,turnId:first.id}));r.logs.forEach(pushRoll);};
   const resetCombat=function(){setCombat(function(p){return Object.assign({},p,{started:false,round:1,turnId:null});});};
   const nextTurn=function(){
-    setCombat(function(p){
-      var ord=sortOrder(p.combatants||[]); if(!ord.length) return p;
-      var idx=ord.findIndex(function(c){return c.id===p.turnId;});
-      var ni=idx+1, round=p.round||1;
-      if(ni>=ord.length){ni=0;round++;}
-      var nextC=ord[ni];
-      var combatants=(p.combatants||[]).map(function(c){return c.id!==nextC.id?c:Object.assign({},c,{conditions:tickTimers(c.conditions),spells:tickTimers(c.spells)});});
-      return Object.assign({},p,{combatants:combatants,turnId:nextC.id,round:round,started:true});
-    });
+    var p=combatRef.current;
+    var ord=sortOrder(p.combatants||[]); if(!ord.length) return;
+    var idx=ord.findIndex(function(c){return c.id===p.turnId;});
+    var ni=idx+1, round=p.round||1;
+    if(ni>=ord.length){ni=0;round++;}
+    var nextC=ord[ni];
+    var combatants=(p.combatants||[]).map(function(c){return c.id!==nextC.id?c:Object.assign({},c,{conditions:tickTimers(c.conditions),spells:tickTimers(c.spells)});});
+    var q=Object.assign({},p,{combatants:combatants});
+    var r=applyTurnStart(q,nextC.id);
+    setCombat(Object.assign({},q,{combatants:r.cs,turnId:nextC.id,round:round,started:true}));
+    r.logs.forEach(pushRoll);
   };
   const fullHealAll=function(){window.__confirm("Restore every combatant to full HP?",function(){setCombat(function(p){return Object.assign({},p,{combatants:(p.combatants||[]).map(function(c){return c.maxHp?Object.assign({},c,{hp:c.maxHp}):c;})});});},"Full HP");};
   const addPC=function(pc){setCombat(function(p){return Object.assign({},p,{combatants:[...(p.combatants||[]),pc]});});};
@@ -5620,17 +5624,58 @@ function TimerChips({list,color,onAdd,onDel,placeholder,dataList}){
   </div>;
 }
 
+// Damage uses up temporary HP first; healing never touches it.
+function hpChange(p,delta){
+  var hp=p.hp||0,tmp=p.tempHp||0;
+  if(delta<0){var take=Math.min(tmp,-delta);tmp-=take;hp=Math.max(0,hp-(-delta-take));}
+  else hp=Math.min(p.maxHp||9999,hp+delta);
+  return {hp:hp,tempHp:tmp};
+}
+// Death saves. Players: read from their imported sheet. Creatures: counted here when the ☠ box is ticked.
+function psDeathState(c){
+  var ok,bad,dead;
+  if(c.sheet){
+    var sh=c.sheet;
+    ok=(sh.ds||[]).filter(Boolean).length;bad=(sh.df||[]).filter(Boolean).length;
+    dead=bad>=3||(parseInt(sh.exhaustion)||0)>=6;
+  } else {
+    if(!c.deathSaves)return {ok:0,bad:0,dead:false,stable:false};
+    ok=c.dsOk||0;bad=c.dsBad||0;dead=bad>=3;
+  }
+  return {ok:ok,bad:bad,dead:dead,stable:!dead&&ok>=3&&(c.hp||0)<=0};
+}
+// One automatic death save for a creature at the start of its turn (1 = two failures, 2-9 fail, 10-19 success, 20 = back up with 1 HP).
+function dsRollStep(c){
+  if(!c||c.type==="pc"||!c.deathSaves||(c.hp||0)>0)return null;
+  var ok=c.dsOk||0,bad=c.dsBad||0;
+  if(bad>=3||ok>=3)return null;
+  var r=rollN(20),note,patch;
+  if(r===20){patch={hp:1,dsOk:0,dsBad:0};note="natural 20, regains 1 HP";}
+  else if(r===1){bad=Math.min(3,bad+2);patch={dsBad:bad};note="natural 1, two failures";}
+  else if(r<10){bad=Math.min(3,bad+1);patch={dsBad:bad};note="failure";}
+  else{ok=Math.min(3,ok+1);patch={dsOk:ok};note="success";}
+  var end=patch.dsBad>=3?" - DEAD":patch.dsOk>=3?" - STABLE":"";
+  return {patch:patch,log:{id:uid(),name:c.name,label:"Death save",detail:"d20("+r+") "+note+end,total:r}};
+}
+function DsDots({ok,bad,onSet}){
+  var dot=function(n,col,sym,key){return [0,1,2].map(function(i){return <span key={key+i} onClick={onSet?function(){onSet(key,i<n?i:i+1);}:undefined} style={{color:i<n?col:"rgba(232,213,176,.3)",fontSize:15,letterSpacing:1,cursor:onSet?"pointer":"default",userSelect:"none"}}>{i<n?sym:"○"}</span>;});};
+  return <span style={{display:"inline-flex",alignItems:"center",gap:6}}><span title="Successes">{dot(ok,"#7cc98a","●","ok")}</span><span title="Failures">{dot(bad,"#e07060","✕","bad")}</span></span>;
+}
 function CombatRow({c,isTurn,upd,remove,setLightbox,onOpenRoller}){
   const [dmg,setDmg]=useState("");
   const [sheetOpen,setSheetOpen]=useState(false);
+  const dst=psDeathState(c);
+  React.useEffect(function(){if(c.deathSaves&&(c.hp||0)>0&&(c.dsOk||c.dsBad))upd(c.id,{dsOk:0,dsBad:0});},[c.hp,c.deathSaves]);
   const accent=c.type==="pc"?"74,156,92":"123,79,207";
-  const applyDmg=function(sign){var n=parseInt(dmg);if(isNaN(n))return;upd(c.id,function(p){return {hp:Math.max(0,Math.min(p.maxHp||9999,(p.hp||0)+sign*n))};});setDmg("");};
+  const applyDmg=function(sign){var n=parseInt(dmg);if(isNaN(n))return;upd(c.id,function(p){return hpChange(p,sign*n);});setDmg("");};
   const hpPct=c.maxHp?Math.max(0,Math.min(100,Math.round(100*(c.hp||0)/c.maxHp))):100;
   const hpColor=hpPct>50?GRN:hpPct>25?"#c9a02a":RED;
   return <div style={{border:"1px solid rgba("+accent+",."+(isTurn?"7":"25")+")",borderRadius:4,background:isTurn?"rgba("+accent+",.12)":"rgba(0,0,0,.18)",boxShadow:isTurn?"0 0 0 1px rgba("+accent+",.4)":"none",minWidth:0}}>
     <div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 10px 4px"}}>
       <input value={c.init==null?"":c.init} onChange={function(e){var v=e.target.value;upd(c.id,{init:v===""?null:parseInt(v)||0});}} placeholder="–" title="Initiative" style={Object.assign({},inp,{width:34,textAlign:"center",fontFamily:"'Cinzel',serif",fontSize:15,color:GOLDL,padding:"4px 2px"})}/>
       {isTurn&&<span style={{color:GOLDL,fontSize:13}}>▶</span>}
+      {dst.dead&&<span title="Dead" style={{fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1,color:"#e07060",border:"1px solid rgba(224,112,96,.6)",background:"rgba(201,74,42,.15)",borderRadius:2,padding:"1px 5px",flexShrink:0}}>DEAD</span>}
+      {dst.stable&&<span title="Stable" style={{fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1,color:"#7cc98a",border:"1px solid rgba(124,201,138,.6)",background:"rgba(74,156,92,.15)",borderRadius:2,padding:"1px 5px",flexShrink:0}}>STABLE</span>}
       <input value={c.name} onChange={function(e){upd(c.id,{name:e.target.value});}} title="Name (editable)" style={Object.assign({},inp,{flex:1,minWidth:0,fontFamily:"'Cinzel',serif",fontSize:14,color:isTurn?GOLDL:PARCH,border:"1px solid transparent",background:"transparent",padding:"3px 4px"})}/>
       {c.statblockMd&&<div onClick={function(){upd(c.id,function(p){return {expanded:!p.expanded};});}} title={c.expanded?"Close statblock":"Open statblock"} style={{cursor:"pointer",fontSize:15,userSelect:"none",padding:"0 2px",opacity:c.expanded?1:.6}}>📖</div>}
       {c.sheet&&<div onClick={function(){setSheetOpen(true);}} title="Character sheet" style={{cursor:"pointer",fontSize:15,userSelect:"none",padding:"0 2px"}}>📜</div>}
@@ -5646,7 +5691,11 @@ function CombatRow({c,isTurn,upd,remove,setLightbox,onOpenRoller}){
         <input value={c.hp==null?"":c.hp} onChange={function(e){upd(c.id,{hp:parseInt(e.target.value)||0});}} title="Current HP" style={Object.assign({},inp,{width:42,textAlign:"center",color:hpColor,fontWeight:600,padding:"3px 2px"})}/>
         <span style={{color:"rgba(232,213,176,.4)",fontSize:12}}>/</span>
         <input value={c.maxHp==null?"":c.maxHp} onChange={function(e){upd(c.id,{maxHp:parseInt(e.target.value)||0});}} title="Max HP" style={Object.assign({},inp,{width:42,textAlign:"center",padding:"3px 2px"})}/>
+        <span style={{fontSize:11,color:"#8ab4e8",marginLeft:4}} title="Temporary HP">+</span>
+        <input value={c.tempHp?c.tempHp:""} placeholder="tmp" onChange={function(e){upd(c.id,{tempHp:Math.max(0,parseInt(e.target.value)||0)});}} title="Temporary HP (damage uses it up first)" style={Object.assign({},inp,{width:38,textAlign:"center",padding:"3px 2px",color:"#8ab4e8"})}/>
       </div>
+      {c.type!=="pc"&&<label title="Roll death saves automatically on this creature's turn while it is at 0 HP" style={{display:"inline-flex",alignItems:"center",gap:3,cursor:"pointer",fontFamily:"'EB Garamond',serif",fontSize:12,color:c.deathSaves?"#e07060":"rgba(232,213,176,.5)",userSelect:"none"}}><input type="checkbox" checked={!!c.deathSaves} onChange={function(e){upd(c.id,{deathSaves:e.target.checked,dsOk:0,dsBad:0});}} style={{margin:0}}/>☠ Death saves</label>}
+      {c.type!=="pc"&&c.deathSaves&&((c.hp||0)<=0||dst.ok>0||dst.bad>0)&&<DsDots ok={dst.ok} bad={dst.bad} onSet={function(k,n){upd(c.id,k==="ok"?{dsOk:n}:{dsBad:n});}}/>}
       <div title="Damage / heal amount" style={{display:"flex",alignItems:"center",gap:3,marginLeft:"auto"}}>
         <span style={{fontSize:13,color:"#c9a02a"}}>⚡</span>
         <input value={dmg} onChange={function(e){setDmg(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")applyDmg(-1);}} placeholder="#" style={Object.assign({},inp,{width:38,textAlign:"center",padding:"3px 2px"})}/>
@@ -5977,6 +6026,10 @@ function PlayerSheetPanel({c,upd,onClose}){
   [["aprof",armor],["tprof",tools],["lang",langs]].forEach(function(p){if(sh[p[0]]&&(""+sh[p[0]]).trim())p[1].push(sh[p[0]]);});
   var res=sh.dmgRes||{};
   var cr=sh.condRes&&typeof sh.condRes==="object"?sh.condRes:{};
+  var dsOk=(sh.ds||[]).filter(Boolean).length, dsBad=(sh.df||[]).filter(Boolean).length;
+  var isDead=dsBad>=3||d.exh>=6;
+  var showDs=isDead||dsOk>0||dsBad>0||(c.hp!=null&&c.hp<=0&&c.maxHp>0);
+  var dots=function(n,col,sym){return [0,1,2].map(function(i){return <span key={i} style={{color:i<n?col:"rgba(232,213,176,.25)",fontSize:15,letterSpacing:2}}>{i<n?sym:"○"}</span>;});};
   var pretty=function(id){id=""+id;var nm=/-nonmagical$/.test(id);var b=id.replace(/-nonmagical$/,"");return b.charAt(0).toUpperCase()+b.slice(1)+(nm?" (non-magical)":"");};
   var L=function(a){return (a||[]).map(pretty).join(", ");};
   var senses=Object.keys(sh.senses||{}).filter(function(k){return sh.senses[k]&&sh.senses[k].on;}).map(function(k){return k+(sh.senses[k].ft?" "+sh.senses[k].ft+" ft":"");});
@@ -5999,7 +6052,7 @@ function PlayerSheetPanel({c,upd,onClose}){
           <div style={{padding:"8px 10px 6px",display:"flex",flexDirection:"column",gap:6}}>
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
               <PsChip k="AC" v={d.ac}/><PsChip k="HP" v={(c.hp==null?d.hpCur:c.hp)+"/"+(c.maxHp==null?d.hpMax:c.maxHp)} col="224,112,96"/>
-              <PsChip k="Temp" v={d.hpTemp}/><PsChip k="Speed" v={d.speed}/><PsChip k="Init" v={psF(d.init)}/><PsChip k="Prof" v={psF(d.pb)}/>
+              <PsChip k="Temp" v={c.tempHp==null?d.hpTemp:c.tempHp}/><PsChip k="Speed" v={d.speed}/><PsChip k="Init" v={psF(d.init)}/><PsChip k="Prof" v={psF(d.pb)}/>
             </div>
             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
               <PsChip k="Level" v={d.level}/><PsChip k="Pass. Perc" v={d.passP}/><PsChip k="Pass. Ins" v={d.passI}/><PsChip k="Pass. Inv" v={d.passV}/>
@@ -6014,6 +6067,13 @@ function PlayerSheetPanel({c,upd,onClose}){
                 <div title="Saving throw" style={{fontFamily:"'Cinzel',serif",fontSize:9,color:sv.prof?GRN:"rgba(232,213,176,.5)",marginTop:1,borderTop:"1px solid rgba(201,150,42,.12)"}}>{sv.prof?"● ":""}{psF(sv.v)}</div>
               </div>;})}
             </div>
+            {showDs&&<div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",border:"1px solid "+(isDead?"rgba(201,74,42,.6)":"rgba(201,150,42,.3)"),borderRadius:3,background:isDead?"rgba(201,74,42,.12)":"rgba(0,0,0,.25)",padding:"3px 8px"}}>
+              <span style={{fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",color:"rgba(232,213,176,.55)"}}>Death saves</span>
+              <span title="Successes">{dots(dsOk,"#7cc98a","●")}</span>
+              <span title="Failures">{dots(dsBad,"#e07060","✕")}</span>
+              {isDead&&<b style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,color:"#e07060"}}>DEAD{d.exh>=6&&dsBad<3?" (exhaustion 6)":""}</b>}
+              {!isDead&&dsOk>=3&&<b style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,color:"#7cc98a"}}>STABLE</b>}
+            </div>}
             {(d.exh>0||sh.ins||(res.res&&res.res.length)||(res.imm&&res.imm.length)||(res.vul&&res.vul.length)||(cr.adv&&cr.adv.length)||(cr.imm&&cr.imm.length)||senses.length>0)&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:12,color:"rgba(232,213,176,.75)",lineHeight:1.45}}>
               {(d.exh>0||sh.ins)&&<div>{d.exh>0&&<span style={{color:"#e07060",marginRight:8}}>Exhaustion {d.exh}</span>}{sh.ins&&<span style={{color:GOLDL}}>Inspired</span>}</div>}
               {res.res&&res.res.length>0&&<div><b style={{color:"#7cc98a"}}>Resist</b> {L(res.res)}</div>}
@@ -6105,7 +6165,7 @@ function psReadFiles(files,onAdd,setErr){
       var snap=psSnapshot(raw),dd=psDerive(snap);
       psThumb(raw.portrait).then(function(th){
         snap._thumb=th;
-        onAdd({id:uid(),name:(snap.name||"").trim()||f.name.replace(/\.json$/i,""),type:"pc",init:null,dexMod:dd.init,hp:Math.min(dd.hpCur,dd.hpMax||dd.hpCur),maxHp:dd.hpMax,ac:dd.ac,conditions:[],spells:[],statblockMd:"",images:[],expanded:false,sheet:snap});
+        onAdd({id:uid(),name:(snap.name||"").trim()||f.name.replace(/\.json$/i,""),type:"pc",init:null,dexMod:dd.init,hp:Math.min(dd.hpCur,dd.hpMax||dd.hpCur),maxHp:dd.hpMax,tempHp:dd.hpTemp,ac:dd.ac,conditions:[],spells:[],statblockMd:"",images:[],expanded:false,sheet:snap});
         next();
       });
     };
@@ -6182,13 +6242,14 @@ function PcHpBox({c,upd}){
   const [d,setD]=useState("");
   const pct=c.maxHp?Math.max(0,Math.min(100,Math.round(100*(c.hp||0)/c.maxHp))):100;
   const col=pct>50?GRN:pct>25?"#c9a02a":RED;
-  const apply=function(sign){var n=parseInt(d);if(isNaN(n))return;upd(c.id,function(p){return {hp:Math.max(0,Math.min(p.maxHp||9999,(p.hp||0)+sign*n))};});setD("");};
+  const apply=function(sign){var n=parseInt(d);if(isNaN(n))return;upd(c.id,function(p){return hpChange(p,sign*n);});setD("");};
   return <div style={{minWidth:190,flex:"1 1 190px",maxWidth:280,border:"1px solid rgba(74,156,92,.3)",borderRadius:4,background:"rgba(0,0,0,.22)",padding:"6px 8px"}}>
     <div style={{display:"flex",alignItems:"center",gap:6}}>
       <span style={{flex:1,minWidth:0,fontFamily:"'Cinzel',serif",fontSize:13,color:PARCH,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name||"?"}</span>
       <span style={{fontSize:13,color:"#e07060"}}>♥</span>
       <input value={c.hp==null?"":c.hp} onChange={function(e){upd(c.id,{hp:parseInt(e.target.value)||0});}} title="Current HP" style={Object.assign({},inp,{width:40,textAlign:"center",color:col,fontWeight:600,padding:"2px"})}/>
       <span style={{color:"rgba(232,213,176,.4)",fontSize:12}}>/ {c.maxHp||"–"}</span>
+      <input value={c.tempHp?c.tempHp:""} placeholder="tmp" onChange={function(e){upd(c.id,{tempHp:Math.max(0,parseInt(e.target.value)||0)});}} title="Temporary HP (damage uses it up first)" style={Object.assign({},inp,{width:34,textAlign:"center",padding:"2px",color:"#8ab4e8",fontSize:12})}/>
     </div>
     <div style={{height:3,background:"rgba(0,0,0,.4)",margin:"5px 0",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:col,transition:"width .2s"}}/></div>
     <div style={{display:"flex",alignItems:"center",gap:3}}>
@@ -6361,7 +6422,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.8.2</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.9.1</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
