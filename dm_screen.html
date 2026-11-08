@@ -6184,6 +6184,122 @@ function psReadFiles(files,onAdd,setErr){
   next();
 }
 
+// ─── Live sync (players' sheets arrive through a shared Firebase Realtime Database) ───
+const SYNC_KEY="dm_sync_v1";
+function syncLoad(){var d={url:"",room:"",on:false};try{return Object.assign(d,JSON.parse(localStorage.getItem(SYNC_KEY)||"{}"));}catch(e){return d;}}
+function syncBase(c){return c.url.replace(/\/+$/,"")+"/rooms/"+encodeURIComponent((c.room||"").trim());}
+function syncParse(text){var raw=JSON.parse(text);var th=raw.__thumb;delete raw.__thumb;var snap=psSnapshot(raw);snap._thumb=th||"";return snap;}
+function psNewCombatant(snap,name,syncId,updated){
+  var dd=psDerive(snap);
+  return {id:uid(),name:name,type:"pc",init:null,dexMod:dd.init,hp:Math.min(dd.hpCur,dd.hpMax||dd.hpCur),maxHp:dd.hpMax,tempHp:dd.hpTemp,ac:dd.ac,conditions:[],spells:[],statblockMd:"",images:[],expanded:false,sheet:snap,syncId:syncId,syncUpdated:updated};
+}
+// A new copy of a player's sheet: replace the sheet, and only move the combat numbers the PLAYER changed
+// (so a hit the DM just applied isn't undone by an old value).
+function psSyncPatch(c,snap,updated){
+  var prev=psDerive(c.sheet||snap),now=psDerive(snap);
+  var p={sheet:snap,syncUpdated:updated};
+  if(prev.hpMax!==now.hpMax)p.maxHp=now.hpMax;
+  if(prev.hpCur!==now.hpCur)p.hp=Math.min(now.hpCur,(p.maxHp!=null?p.maxHp:c.maxHp)||9999);
+  if(prev.hpTemp!==now.hpTemp)p.tempHp=now.hpTemp;
+  if(prev.ac!==now.ac)p.ac=now.ac;
+  if(prev.init!==now.init)p.dexMod=now.init;
+  return p;
+}
+function SyncButton({combat,setCombat}){
+  const [cfg,setCfg]=useState(syncLoad);
+  const [open,setOpen]=useState(false);
+  const [found,setFound]=useState({});
+  const [msg,setMsg]=useState({t:"",bad:false});
+  const [draft,setDraft]=useState({url:"",room:""});
+  const comb=useRef(combat);comb.current=combat;
+  const busy=useRef(false);
+  const live=cfg.on&&cfg.url&&cfg.room;
+  const saveCfg=function(n){setCfg(n);try{localStorage.setItem(SYNC_KEY,JSON.stringify(n));}catch(e){}};
+  const poll=async function(c0){
+    var c=c0||cfg;
+    if(busy.current||!(c.on&&c.url&&c.room))return;
+    busy.current=true;
+    try{
+      var b=syncBase(c);
+      var r=await fetch(b+"/meta.json");
+      if(!r.ok)throw new Error("HTTP "+r.status);
+      var meta=(await r.json())||{};
+      setFound(meta);
+      var list=(comb.current.combatants||[]).slice();
+      for(var i=0;i<list.length;i++){
+        var x=list[i],m=x.syncId&&meta[x.syncId];
+        if(!m||!(m.updated>(x.syncUpdated||0)))continue;
+        var dr=await fetch(b+"/data/"+encodeURIComponent(x.syncId)+".json");
+        if(!dr.ok)continue;
+        var txt=await dr.json();if(!txt)continue;
+        var snap=syncParse(txt);
+        setCombat((function(cid,sn,up){return function(p){return Object.assign({},p,{combatants:(p.combatants||[]).map(function(y){return y.id===cid?Object.assign({},y,psSyncPatch(y,sn,up)):y;})});};})(x.id,snap,m.updated));
+      }
+      setMsg({t:"Checked "+new Date().toLocaleTimeString(),bad:false});
+    }catch(e){setMsg({t:"Can't reach the database: "+(e&&e.message?e.message:e),bad:true});}
+    busy.current=false;
+  };
+  useEffect(function(){
+    if(!live)return;
+    poll();
+    var iv=setInterval(function(){poll();},5000);
+    return function(){clearInterval(iv);};
+  },[cfg.on,cfg.url,cfg.room]);
+  const addPlayer=async function(id){
+    try{
+      var b=syncBase(cfg),m=found[id]||{};
+      var dr=await fetch(b+"/data/"+encodeURIComponent(id)+".json");
+      var txt=await dr.json();
+      if(!txt)throw new Error("no data yet");
+      var snap=syncParse(txt);
+      var pc=psNewCombatant(snap,(snap.name||m.name||"Player").trim(),id,m.updated||0);
+      setCombat(function(p){return Object.assign({},p,{combatants:[...(p.combatants||[]),pc]});});
+    }catch(e){setMsg({t:"Couldn't add that player: "+(e&&e.message?e.message:e),bad:true});}
+  };
+  const connect=function(){
+    var u=(draft.url||"").trim();if(u&&!/^https?:\/\//i.test(u))u="https://"+u;
+    var r=(draft.room||"").trim();
+    if(!u||!r){setMsg({t:"Enter the database address and a room code.",bad:true});return;}
+    var n={url:u.replace(/\/+$/,""),room:r,on:true};
+    saveCfg(n);setDraft({url:n.url,room:n.room});setMsg({t:"Connecting...",bad:false});poll(n);
+  };
+  const ids=Object.keys(found);
+  const inCombat={};(combat.combatants||[]).forEach(function(c){if(c.syncId)inCombat[c.syncId]=true;});
+  const lbl2=Object.assign({},lbl,{display:"block",marginTop:8});
+  return <React.Fragment>
+    <div onClick={function(){setDraft({url:cfg.url,room:cfg.room});setOpen(true);}} style={Object.assign(btn("56,178,172"),live?{color:msg.bad?"#e07060":"#6fcf85"}:null)} title="Live sync with the players' sheets">⇄ Sync{live?" ●":""}</div>
+    {open&&ReactDOM.createPortal(
+      <div style={{position:"fixed",left:0,top:0,right:0,height:"100dvh",zIndex:99996,background:"rgba(0,0,0,.7)",display:"flex",alignItems:"center",justifyContent:"center",padding:12,boxSizing:"border-box"}} onClick={function(){setOpen(false);}}>
+        <div onClick={function(e){e.stopPropagation();}} style={{background:"#1a1208",border:"1px solid rgba(56,178,172,.5)",borderRadius:4,width:"min(480px,100%)",maxHeight:"calc(100dvh - 24px)",overflow:"auto",padding:16,boxSizing:"border-box",boxShadow:"0 8px 40px rgba(0,0,0,.9)"}}>
+          <div style={{fontFamily:"'Cinzel',serif",fontSize:14,letterSpacing:1.5,color:"#5fd0c8"}}>⇄ Live sync</div>
+          <div style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.65)",margin:"4px 0 6px",lineHeight:1.35}}>Players' sheets arrive here a few seconds after they change. Use the same address and room code the players type into their sheets.</div>
+          <label style={lbl2}>Database address</label>
+          <input value={draft.url} onChange={function(e){setDraft({url:e.target.value,room:draft.room});}} placeholder="https://yourproject-default-rtdb.firebaseio.com" autoCapitalize="off" autoComplete="off" spellCheck={false} style={Object.assign({},inp,{width:"100%",boxSizing:"border-box",marginTop:3})}/>
+          <label style={lbl2}>Room code</label>
+          <input value={draft.room} onChange={function(e){setDraft({url:draft.url,room:e.target.value});}} placeholder="e.g. DRAGON-42" autoCapitalize="off" autoComplete="off" spellCheck={false} style={Object.assign({},inp,{width:"100%",boxSizing:"border-box",marginTop:3})}/>
+          <div style={{minHeight:18,margin:"10px 0",fontFamily:"'EB Garamond',serif",fontSize:13,color:msg.bad?"#e07060":"#8fd6a0"}}>{live?(msg.t||"On"):"Off"}</div>
+          <div style={{display:"flex",gap:8,flexWrap:"nowrap"}}>
+            <div onClick={connect} style={btn("56,178,172")}>Connect</div>
+            <div onClick={function(){saveCfg(Object.assign({},cfg,{on:false}));setMsg({t:"",bad:false});}} style={btn("201,74,42")}>Stop</div>
+            <div onClick={function(){poll();}} style={btn("201,150,42")} title="Check for changes now">Refresh</div>
+            <div onClick={function(){setOpen(false);}} style={Object.assign(btn("232,213,176"),{marginLeft:"auto"})}>Close</div>
+          </div>
+          {live&&<div style={{marginTop:14}}>
+            <div style={lbl}>Players in this room</div>
+            {ids.length===0&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.5)",fontStyle:"italic",marginTop:4}}>Nobody has connected yet.</div>}
+            {ids.map(function(id){var m=found[id]||{};return <div key={id} style={{display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(201,150,42,.12)",padding:"6px 0"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontFamily:"'EB Garamond',serif",fontSize:15,color:PARCH,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.name||"Player"}</div>
+                <div style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.45)"}}>{m.updated?"updated "+new Date(m.updated).toLocaleTimeString():""}</div>
+              </div>
+              {inCombat[id]?<span style={{fontFamily:"'Cinzel',serif",fontSize:10,color:"#6fcf85",letterSpacing:1}}>● IN COMBAT</span>:<div onClick={function(){addPlayer(id);}} style={btn("74,156,92")}>Add</div>}
+            </div>;})}
+          </div>}
+        </div>
+      </div>,document.body)}
+  </React.Fragment>;
+}
+
 function AddPCForm({onAdd}){
   const [impErr,setImpErr]=useState("");
   const importEl=function(mt){return <label title="Add players from the .json files saved by the Character Sheet" style={Object.assign(btn("184,154,240"),{display:"inline-block",marginTop:mt,marginLeft:mt?8:0})}>⇑ Import player JSON<input type="file" accept=".json,application/json" multiple onChange={function(e){var fs=e.target.files;psReadFiles(fs,onAdd,setImpErr);e.target.value="";}} style={{display:"none"}}/></label>;};
@@ -6406,6 +6522,7 @@ function App(){
         <div onClick={doSave} style={btn("201,150,42")} title="Save everything to a JSON file (choose location & name)">Save</div>
         <div onClick={doSaveAs} style={btn("201,150,42")} title="Save to a new file / location">Save As</div>
         <div onClick={function(){if(fileRef.current)fileRef.current.click();}} style={btn("201,150,42")} title="Load from a JSON file">Load</div>
+        <SyncButton combat={combat} setCombat={setCombat}/>
         <div onClick={toggleTheme} style={btn("232,213,176")} title="Toggle light / dark theme">{theme==="light"?"☀ Dark":"☾ Light"}</div>
         {saveMsg&&<span style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(143,214,160,.9)",marginLeft:4}}>{saveMsg}</span>}
       </div>
@@ -6431,7 +6548,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.9.2</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.10.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
