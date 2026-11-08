@@ -5394,8 +5394,33 @@ function statblockRolls(md){
   return groups;
 }
 // Build every rollable thing for a combatant from its parsed statblock.
+// Everything a player can roll, built from the imported character sheet.
+function psRolls(c){
+  var d=psDerive(c.sheet);
+  var groups=[{g:"General",items:[{label:"Initiative",type:"d20",mod:(c.dexMod||0),isInit:true},{label:"d20",type:"d20",mod:0},{label:"Death save",type:"d20",mod:0}]}];
+  groups.push({g:"Ability Checks",items:d.checks.map(function(x){return {label:x.a,type:"d20",mod:x.v};})});
+  groups.push({g:"Saving Throws",items:d.saves.map(function(x){return {label:x.a+" save",type:"d20",mod:x.v};})});
+  groups.push({g:"Skills",items:d.skills.map(function(x){return {label:x.n,type:"d20",mod:x.v};})});
+  var atk=[],dmg=[];
+  d.weapons.forEach(function(w){
+    if(!w.nm&&!w.roll.length)return;
+    if(!w.isSave&&w.atk!=null)atk.push({label:w.nm||"Attack",type:"d20",mod:w.atk});
+    w.roll.forEach(function(p){
+      var dice=(""+p.dice).replace(/[^0-9dD+\-]/g,"");
+      var expr=(dice?dice:"")+(p.bonus?(p.bonus>0?"+":"")+p.bonus:"");
+      if(expr[0]==="+")expr=expr.slice(1);
+      if(!expr||!rollExpression(expr))return;
+      dmg.push({label:(w.nm||"Attack")+(p.type?" ("+p.type+")":""),type:"expr",expr:expr});
+    });
+  });
+  d.casters.forEach(function(x){atk.push({label:(x.nm||"Spell")+" spell attack",type:"d20",mod:x.atk});});
+  if(atk.length)groups.push({g:"Attacks",items:atk});
+  if(dmg.length)groups.push({g:"Damage",items:dmg});
+  return groups;
+}
 function creatureRolls(c){
-  var groups=[{g:"General",items:[{label:"Initiative",type:"d20",mod:(c.dexMod||0)},{label:"d20",type:"d20",mod:0}]}];
+  if(c.sheet)return psRolls(c);
+  var groups=[{g:"General",items:[{label:"Initiative",type:"d20",mod:(c.dexMod||0),isInit:true},{label:"d20",type:"d20",mod:0}]}];
   var cr=c.creature;
   if(cr&&cr.stats){
     var pb=parseInt(cr.pbFlat)||2, st=cr.stats;
@@ -5423,6 +5448,7 @@ function creatureRolls(c){
   return groups;
 }
 function rollItem(it){
+  if(it.type==="expr"){var er=rollExpression(it.expr);return er||{total:0,detail:"?"};}
   if(it.type==="dice"){var rs=[],t=0;for(var i=0;i<it.n;i++){var x=rollN(it.sides);rs.push(x);t+=x;}return {total:t+(it.bonus||0),detail:it.n+"d"+it.sides+"["+rs.join(",")+"]"+(it.bonus?fmtMod(it.bonus):"")};}
   var d=rollN(20);return {total:d+(it.mod||0),detail:"d20("+d+")"+(it.mod?fmtMod(it.mod):"")};
 }
@@ -5466,7 +5492,7 @@ function RollerPanel({c,pos,setPos,onClose,onRoll}){
       {groups.map(function(grp,gi){return <div key={gi} style={{marginBottom:10}}>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,textTransform:"uppercase",color:"rgba(184,154,240,.55)",marginBottom:5}}>{grp.g}</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-          {grp.items.map(function(it,ii){return <div key={ii} onClick={function(){onRoll(c.name,it);}} style={{cursor:"pointer",fontFamily:"'EB Garamond',serif",fontSize:12,color:PARCH,border:"1px solid rgba(201,150,42,.3)",background:"rgba(201,150,42,.08)",borderRadius:3,padding:"3px 8px"}}>{it.label}<span style={{color:"rgba(232,213,176,.4)",marginLeft:4}}>{it.type==="dice"?(it.n+"d"+it.sides+(it.bonus?fmtMod(it.bonus):"")):fmtMod(it.mod||0)}</span></div>;})}
+          {grp.items.map(function(it,ii){return <div key={ii} onClick={function(){onRoll(c.name,it,c.id);}} style={{cursor:"pointer",fontFamily:"'EB Garamond',serif",fontSize:12,color:PARCH,border:"1px solid rgba(201,150,42,.3)",background:"rgba(201,150,42,.08)",borderRadius:3,padding:"3px 8px"}}>{it.label}<span style={{color:"rgba(232,213,176,.4)",marginLeft:4}}>{it.type==="dice"?(it.n+"d"+it.sides+(it.bonus?fmtMod(it.bonus):"")):it.type==="expr"?it.expr:fmtMod(it.mod||0)}</span></div>;})}
         </div>
       </div>;})}
     </div>
@@ -5488,7 +5514,7 @@ function CombatTracker({combat,setCombat,setLightbox,onAddCreature}){
   const showFlash=function(entry){setFlash(entry);if(flashTimer.current)clearTimeout(flashTimer.current);flashTimer.current=setTimeout(function(){setFlash(null);},3500);};
   const pushRoll=function(entry){setRolls(function(p){return [entry,...p].slice(0,20);});showFlash(entry);};
   const rollCustom=function(){var r=rollExpression(customExpr);if(!r){setCustomErr(true);return;}setCustomErr(false);pushRoll({id:uid(),name:"Custom",label:customExpr.trim(),detail:r.detail,total:r.total});};
-  const doRoll=function(name,it){var r=rollItem(it);pushRoll({id:uid(),name:name,label:it.label,detail:r.detail,total:r.total});};
+  const doRoll=function(name,it,id){var r=rollItem(it);pushRoll({id:uid(),name:name,label:it.label,detail:r.detail,total:r.total});if(it.isInit&&id)upd(id,{init:r.total});};
   const openRoller=function(id){setRoller(function(p){return {id:id,x:p?p.x:Math.max(8,Math.round(window.innerWidth/2)-150),y:p?p.y:90};});};
   const setRollerPos=function(pos){setRoller(function(p){return p?Object.assign({},p,{x:pos.x,y:pos.y}):p;});};
   const upd=function(id,patch){setCombat(function(p){return Object.assign({},p,{combatants:(p.combatants||[]).map(function(c){return c.id===id?Object.assign({},c,typeof patch==="function"?patch(c):patch):c;})});});};
@@ -5596,6 +5622,7 @@ function TimerChips({list,color,onAdd,onDel,placeholder,dataList}){
 
 function CombatRow({c,isTurn,upd,remove,setLightbox,onOpenRoller}){
   const [dmg,setDmg]=useState("");
+  const [sheetOpen,setSheetOpen]=useState(false);
   const accent=c.type==="pc"?"74,156,92":"123,79,207";
   const applyDmg=function(sign){var n=parseInt(dmg);if(isNaN(n))return;upd(c.id,function(p){return {hp:Math.max(0,Math.min(p.maxHp||9999,(p.hp||0)+sign*n))};});setDmg("");};
   const hpPct=c.maxHp?Math.max(0,Math.min(100,Math.round(100*(c.hp||0)/c.maxHp))):100;
@@ -5606,6 +5633,7 @@ function CombatRow({c,isTurn,upd,remove,setLightbox,onOpenRoller}){
       {isTurn&&<span style={{color:GOLDL,fontSize:13}}>▶</span>}
       <input value={c.name} onChange={function(e){upd(c.id,{name:e.target.value});}} title="Name (editable)" style={Object.assign({},inp,{flex:1,minWidth:0,fontFamily:"'Cinzel',serif",fontSize:14,color:isTurn?GOLDL:PARCH,border:"1px solid transparent",background:"transparent",padding:"3px 4px"})}/>
       {c.statblockMd&&<div onClick={function(){upd(c.id,function(p){return {expanded:!p.expanded};});}} title={c.expanded?"Close statblock":"Open statblock"} style={{cursor:"pointer",fontSize:15,userSelect:"none",padding:"0 2px",opacity:c.expanded?1:.6}}>📖</div>}
+      {c.sheet&&<div onClick={function(){setSheetOpen(true);}} title="Character sheet" style={{cursor:"pointer",fontSize:15,userSelect:"none",padding:"0 2px"}}>📜</div>}
       <div onClick={function(){upd(c.id,function(p){return {notesOpen:!p.notesOpen};});}} title="Notes" style={{cursor:"pointer",fontSize:14,userSelect:"none",padding:"0 2px",opacity:(c.notes&&c.notes.trim())?1:.55}}>📝</div>
       <div onClick={function(){onOpenRoller(c.id);}} title="Dice roller" style={{cursor:"pointer",fontSize:15,userSelect:"none",padding:"0 2px"}}>🎲</div>
       <div onClick={function(){window.__confirm("Remove "+(c.name||"this combatant")+" from combat?",function(){remove(c.id);});}} title="Remove" style={{cursor:"pointer",color:"rgba(232,213,176,.35)",fontSize:15,userSelect:"none",padding:"0 2px"}}>✕</div>
@@ -5645,14 +5673,456 @@ function CombatRow({c,isTurn,upd,remove,setLightbox,onOpenRoller}){
         <MdField value={c.notes||""} onChange={function(e){upd(c.id,{notes:e.target.value});}} placeholder="Write notes for this character… (markdown supported)" style={{minHeight:"4em"}}/>
       </div>
     </div>}
+    {sheetOpen&&c.sheet&&<PlayerSheetPanel c={c} upd={upd} onClose={function(){setSheetOpen(false);}}/>}
   </div>;
 }
 
+
+// ─── Player sheet import (reads the Character Sheet's saved .json) ───────────
+// The helpers inside PS are copied unchanged from character_sheet.html so every
+// number shown here is worked out the same way the sheet works it out.
+const PS=(function(){
+const getTotal=(c,st)=>(parseInt(c.statsBase&&c.statsBase[st]||0)||0)+(parseInt(c.statsBon&&c.statsBon[st]||0)||0);
+const getMod=(c,st)=>Math.floor((getTotal(c,st)-10)/2);
+function _clsMatch(a,b){
+  var na=(""+(a||"")).toLowerCase().replace(/[^a-z0-9]/g,"");
+  var nb=(""+(b||"")).toLowerCase().replace(/[^a-z0-9]/g,"");
+  if(!na||!nb) return false;
+  return na===nb||na.indexOf(nb)===0||nb.indexOf(na)===0;
+}
+function computeBonusFromFormula(formula,c){
+  if(!formula) return 0;
+  const allCls=(c.classes&&c.classes.length>0?c.classes:[{nm:c.cls||"",lv:"",hd:"d6"}]).filter(function(cl){return (cl.nm||"").trim();});
+  const totalLv=allCls.reduce(function(t,cl){return t+(parseInt(cl.lv)||0);},0);
+  const pb2=(function(){var base=totalLv<1?2:Math.ceil(totalLv/4)+1;return base+(parseInt((c.pbBonus||"").replace("+",""))||0);})();
+  const getMod2=function(abl){var base=parseInt((c.statsBase&&c.statsBase[abl])||c.stats[abl])||10;var bon=parseInt((c.statsBon&&c.statsBon[abl])||0)||0;return Math.floor((base+bon-10)/2);};
+  const flat=parseInt((formula.flat||"").replace("+",""))||0;
+  const ablSum=(formula.abls||[]).reduce(function(t,a){return t+getMod2(a);},0);
+
+  // Prof: new array format (profs:[]) stacks freely; fall back to old single field
+  var profSum=0;
+  if(formula.profs&&formula.profs.length>0){
+    profSum=(formula.profs||[]).reduce(function(t,p){
+      return t+(p==="full"?pb2:p==="half-up"?Math.ceil(pb2/2):p==="half"?Math.floor(pb2/2):0);
+    },0);
+  } else {
+    profSum=formula.prof==="full"?pb2:formula.prof==="half"?Math.floor(pb2/2):formula.prof==="half-up"?Math.ceil(pb2/2):0;
+  }
+
+  // Level: new array format (lvlEntries:[{type,cls}]) stacks freely; fall back to old single fields
+  var lvlSum=0;
+  if(formula.lvlEntries&&formula.lvlEntries.length>0){
+    lvlSum=(formula.lvlEntries||[]).reduce(function(t,e){
+      var type=e.type||"none";
+      if(type==="total-full") return t+totalLv;
+      if(type==="total-half-down") return t+Math.floor(totalLv/2);
+      if(type==="total-half-up") return t+Math.ceil(totalLv/2);
+      var cl=allCls.find(function(x){return _clsMatch(x.nm,e.cls);});
+      var clLv=cl?parseInt(cl.lv)||0:0;
+      if(type==="class-full") return t+clLv;
+      if(type==="class-half-down") return t+Math.floor(clLv/2);
+      if(type==="class-half-up") return t+Math.ceil(clLv/2);
+      return t;
+    },0);
+  } else {
+    // backward compat
+    if(formula.lvlType==="total-full") lvlSum=totalLv;
+    else if(formula.lvlType==="total-half-down") lvlSum=Math.floor(totalLv/2);
+    else if(formula.lvlType==="total-half-up") lvlSum=Math.ceil(totalLv/2);
+    else if(formula.lvlType==="class-full"){var cl=allCls.find(function(x){return _clsMatch(x.nm,formula.lvlClass);});lvlSum=cl?parseInt(cl.lv)||0:0;}
+    else if(formula.lvlType==="class-half-down"){var cl2=allCls.find(function(x){return _clsMatch(x.nm,formula.lvlClass);});lvlSum=cl2?Math.floor((parseInt(cl2.lv)||0)/2):0;}
+    else if(formula.lvlType==="class-half-up"){var cl3=allCls.find(function(x){return _clsMatch(x.nm,formula.lvlClass);});lvlSum=cl3?Math.ceil((parseInt(cl3.lv)||0)/2):0;}
+  }
+
+  return flat+ablSum+profSum+lvlSum;
+}
+function getCharDCSources(c){
+  if(!c) return [];
+  const out=[];
+  const allCls=(c.classes&&c.classes.length>0?c.classes:[{nm:c.cls||"",lv:"",hd:"d6"}]).filter(function(cl){return (cl.nm||"").trim()||(cl.dcs&&cl.dcs.length);});
+  const totalLv=allCls.reduce(function(t,cl){return t+(parseInt(cl.lv)||0);},0);
+  const pb=(totalLv<1?2:Math.ceil(totalLv/4)+1)+(parseInt((c.pbBonus||"").replace("+",""))||0);
+  const mod=function(abl){var base=parseInt((c.statsBase&&c.statsBase[abl])||(c.stats&&c.stats[abl]))||10;var bon=parseInt((c.statsBon&&c.statsBon[abl])||0)||0;return Math.floor((base+bon-10)/2);};
+  const exhPen=Math.min(5,Math.max(0,parseInt(c.exhaustion)||0))*-2;
+  // Page-1 per-class Save DCs
+  (c.classes||[]).forEach(function(cl,ci){
+    (cl.dcs||[]).forEach(function(dc,di){
+      var abl=dc.abl||"INT";
+      var bon=dc.bonusFormula?computeBonusFromFormula(dc.bonusFormula,c):(parseInt((dc.bonus||"").replace("+",""))||0);
+      var pen=(dc.isSpell?(c.exhAffectAllDC||c.exhAffectSpellDC):c.exhAffectAllDC)?exhPen:0;
+      out.push({key:"class:"+ci+":"+di,label:(dc.nm||((cl.nm||"Class")+" DC"))+" ("+abl+")",abl:abl,value:8+pb+mod(abl)+bon+pen});
+    });
+  });
+  // Spellcasting classes
+  (c.spellClasses||[]).forEach(function(sc,i){
+    var abl=sc.abl||"INT";
+    var bon=sc.dcBonusFormula?computeBonusFromFormula(sc.dcBonusFormula,c):(parseInt((sc.dcBonus||"").replace("+",""))||0);
+    var pen=(c.exhAffectAllDC||c.exhAffectSpellDC)?exhPen:0;
+    out.push({key:"spell:"+i,label:(sc.nm||("Spellcasting "+(i+1)))+" DC ("+abl+")",abl:abl,value:8+pb+mod(abl)+bon+pen});
+  });
+  // Exploit classes
+  (c.exploitClasses||[]).forEach(function(ec,i){
+    var abl=ec.abl||"STR";
+    var bon=ec.dcBonusFormula?computeBonusFromFormula(ec.dcBonusFormula,c):(parseInt((ec.dcBonus||"").replace("+",""))||0);
+    var pen=c.exhAffectAllDC?exhPen:0;
+    out.push({key:"exploit:"+i,label:(ec.nm||("Exploit "+(i+1)))+" DC ("+abl+")",abl:abl,value:8+pb+mod(abl)+bon+pen});
+  });
+  return out;
+}
+return {getTotal:getTotal,getMod:getMod,computeBonusFromFormula:computeBonusFromFormula,getCharDCSources:getCharDCSources};
+})();
+const PS_ABL=["STR","DEX","CON","INT","WIS","CHA"];
+const PS_SKILLS=[["Acrobatics","DEX"],["Animal Handling","WIS"],["Arcana","INT"],["Athletics","STR"],["Deception","CHA"],["History","INT"],["Insight","WIS"],["Intimidation","CHA"],["Investigation","INT"],["Medicine","WIS"],["Nature","INT"],["Perception","WIS"],["Performance","CHA"],["Persuasion","CHA"],["Religion","INT"],["Sleight of Hand","DEX"],["Stealth","DEX"],["Survival","WIS"]];
+const PS_DROP={portrait:1,savedRolls:1,taH:1,dsOpen:1,secOpen:1,creatures:1,nt1:1,nt2:1,nt3:1,npc:1,locations:1,lore:1,customSections:1,factions:1};
+const psN=function(v){return parseInt((""+(v==null?"":v)).replace("+",""))||0;};
+const psF=function(n){return n>=0?"+"+n:""+n;};
+
+// Copy of the sheet minus UI state, journals and the (large) portrait.
+function psSnapshot(raw){
+  var o={};
+  Object.keys(raw||{}).forEach(function(k){if(!PS_DROP[k])o[k]=raw[k];});
+  o.statsBase=Object.assign({},o.statsBase||{});
+  PS_ABL.forEach(function(a){if(o.statsBase[a]===""||o.statsBase[a]==null){var v=o.stats&&o.stats[a];if(v!==""&&v!=null)o.statsBase[a]=v;}});
+  return o;
+}
+function psThumb(src){
+  return new Promise(function(res){
+    if(!src||typeof src!=="string"){res("");return;}
+    var im=new Image();
+    im.onload=function(){try{var s=96,cv=document.createElement("canvas");cv.width=s;cv.height=s;var cx=cv.getContext("2d");var m=Math.min(im.width,im.height);cx.drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,s,s);res(cv.toDataURL("image/jpeg",.8));}catch(e){res("");}};
+    im.onerror=function(){res("");};
+    im.src=src;
+  });
+}
+
+// All the numbers the panel shows, worked out like the sheet does.
+function psDerive(c){
+  var cls=(c.classes&&c.classes.length>0?c.classes:[{nm:c.cls||"",lv:"",hd:"d6"}]);
+  var level=cls.reduce(function(t,cl){return t+(parseInt(cl.lv)||0);},0);
+  var pb=(level<1?2:Math.ceil(level/4)+1)+psN(c.pbBonus);
+  var mod=function(a){return PS.getMod(c,a);};
+  var exh=Math.min(6,Math.max(0,parseInt(c.exhaustion)||0));
+  var exhPen=Math.min(5,exh)*-2, exhSpd=Math.min(5,exh)*-5;
+  var cf=function(f){return PS.computeBonusFromFormula(f,c);};
+  var abilChk=c.abilCheckBonusFormula?cf(c.abilCheckBonusFormula):psN(c.abilCheckBonus);
+  var abilChkAbl=function(a){var f=(c.abilCheckBonusPerAblFormula||{})[a];return f?cf(f):psN((c.abilCheckBonusPerAbl||{})[a]);};
+  var skBon=c.skBonusFormula?cf(c.skBonusFormula):psN(c.skBonus);
+  var svBon=c.svBonusFormula?cf(c.svBonusFormula):psN(c.svBonus);
+  var skAbil=function(n,a){return c.skAbil&&c.skAbil[n]?c.skAbil[n]:a;};
+  var hasProfF=function(f){return !!(f&&((f.profs&&f.profs.length>0)||(f.prof&&f.prof!=="none")));};
+  var anyProf=function(n,a){return !!((c.skp&&c.skp[n])||hasProfF(c.skBonusFormula)||hasProfF(c.skExtraFormula&&c.skExtraFormula[n])||hasProfF(c.abilCheckBonusFormula)||hasProfF((c.abilCheckBonusPerAblFormula||{})[a]));};
+  var skill=function(n,a0){
+    var a=skAbil(n,a0),b=mod(a),prof=!!(c.skp&&c.skp[n]),exp=prof&&!!(c.skExp&&c.skExp[n]);
+    var own=exp?pb*2:prof?pb:0;
+    var ex=c.skExtraFormula&&c.skExtraFormula[n]?cf(c.skExtraFormula[n]):psN((c.skExtra||{})[n]);
+    var half=((c.halfProfSkills||c.halfProfChecks)&&!anyProf(n,a))?Math.floor(pb/2):0;
+    return {n:n,a:a,prof:prof,exp:exp,v:b+own+skBon+ex+abilChk+abilChkAbl(a)+half+exhPen};
+  };
+  var skills=PS_SKILLS.map(function(s){return skill(s[0],s[1]);});
+  var checks=PS_ABL.map(function(a){return {a:a,v:mod(a)+abilChk+abilChkAbl(a)+exhPen};});
+  var byName=function(n){for(var i=0;i<skills.length;i++)if(skills[i].n===n)return skills[i];return {v:0};};
+  var saves=PS_ABL.map(function(a){
+    var ex=c.svExtraFormula&&c.svExtraFormula[a]?cf(c.svExtraFormula[a]):psN((c.svExtra||{})[a]);
+    return {a:a,prof:!!(c.svp&&c.svp[a]),v:mod(a)+((c.svp&&c.svp[a])?pb:0)+svBon+ex+exhPen};
+  });
+  // armor class
+  var acMap=c.acAbls&&!Array.isArray(c.acAbls)?c.acAbls:{};
+  var acAbl=Object.keys(acMap).filter(function(k){return acMap[k]&&acMap[k].on;}).reduce(function(t,k){var raw=mod(k);var cap=parseInt(acMap[k].cap||"")||null;return t+(cap!==null?Math.min(raw,cap):raw);},0);
+  var ac=(parseInt(c.acBase||0)||0)+acAbl+(c.acBonFormula?cf(c.acBonFormula):(parseInt(c.acBon||0)||0));
+  var speed=Math.max(0,(parseInt(c.spdBase||30)||30)+(parseInt(c.spdBon||0)||0)+exhSpd);
+  // initiative
+  var f=c.iniFormula, init;
+  if(f){init=cf(Object.assign({},f,{abls:f.abls||["DEX"]}));}else{init=mod("DEX");}
+  init+=abilChk+abilChkAbl("DEX")+exhPen;
+  // hit points
+  var conM=mod("CON");
+  var calcMax=function(){var total=0,first=true;cls.forEach(function(cl){var lv=parseInt(cl.lv)||0;if(lv<1)return;var ds=parseInt((cl.hd||"d6").replace("d",""))||6;var mean=Math.ceil((ds+1)/2);var hb=psN(cl.hpBonus);for(var i=0;i<lv;i++){if(first){total+=Math.max(1,ds+conM);first=false;}else total+=Math.max(1,mean+conM);total+=hb;}});return total>0?total:0;};
+  var hpMax=c.hpAutoCalc?calcMax():(parseInt(c.hpx)||0);
+  var hpCur=(c.hpc!==""&&c.hpc!=null)?(parseInt(c.hpc)||0):hpMax;
+  var hpTemp=parseInt(c.hpt)||0;
+  // spellcasting
+  var casters=(c.spellClasses||[]).map(function(sc){
+    var a=sc.abl||"INT";
+    var dcB=sc.dcBonusFormula?cf(sc.dcBonusFormula):psN(sc.dcBonus);
+    var atB=sc.atkBonusFormula?cf(sc.atkBonusFormula):psN(sc.atkBonus);
+    var dcP=(c.exhAffectAllDC||c.exhAffectSpellDC)?exhPen:0;
+    return {nm:sc.nm||"Spellcasting",abl:a,dc:8+pb+mod(a)+dcB+dcP,atk:pb+mod(a)+atB+exhPen};
+  });
+  var otherDcs=PS.getCharDCSources(c).filter(function(x){return (""+x.key).indexOf("spell:")!==0;});
+  var spellAbl=casters.length?casters[0].abl:"";
+  return {checks:checks,level:level,pb:pb,exh:exh,ac:ac,speed:speed,init:init,hpMax:hpMax,hpCur:hpCur,hpTemp:hpTemp,skills:skills,saves:saves,casters:casters,otherDcs:otherDcs,spellAbl:spellAbl,
+    passP:10+byName("Perception").v+(c.percAdv?5:0),passI:10+byName("Insight").v+(c.insAdv?5:0),passV:10+byName("Investigation").v+(c.invAdv?5:0),
+    mods:PS_ABL.map(function(a){return {a:a,score:PS.getTotal(c,a),m:mod(a)};}),
+    weapons:(c.wpn||[]).map(function(w){
+      var pm=w.atkProfMode||(w.atkProf?"full":"none");
+      var pbA=pm==="full"?pb:pm==="half"?Math.floor(pb/2):pm==="half-up"?Math.ceil(pb/2):0;
+      var abls=Array.isArray(w.atkAbls)?w.atkAbls:[];
+      var atk=(w.atkFormula?cf(w.atkFormula):pbA+abls.reduce(function(t,a){return t+mod(a);},0)+psN(w.atkFlat))+exhPen;
+      var dm=w.dmgProfMode||(w.dmgProf?"full":"none");
+      var pbD=dm==="full"?pb:dm==="half"?Math.floor(pb/2):dm==="half-up"?Math.ceil(pb/2):0;
+      var dA=Array.isArray(w.dmgAbls)?w.dmgAbls:[];
+      var dBon=w.dmgFormula?cf(w.dmgFormula):dA.reduce(function(t,a){return t+mod(a);},0)+pbD+psN(w.dmgFlat);
+      var dc=null;
+      if(w.isSave){
+        if(w.dcMode==="manual")dc=8+pb+mod(w.dcAbl||"INT")+psN(w.dcFlat)+exhPen;
+        else{var src=PS.getCharDCSources(c);var m=null;src.forEach(function(x){if(x.key===w.dcCharKey)m=x;});if(!m)m=src[0];dc=m?m.value:null;}
+      }
+      var dmg=((w.dmgBase||"")+(dBon?(dBon>0?"+":"")+dBon:"")).trim();
+      var parts=(Array.isArray(w.dmgParts)?w.dmgParts:[]).map(function(p){return [p.dice||p.base||p.nm||"",p.type||p.dmgType||""].join(" ").trim();}).filter(Boolean);
+      var roll=[];
+      var base=(w.dmgBase||w.dmg||"");
+      if((""+base).trim()||dBon||w.dmgType)roll.push({dice:base,type:w.dmgType||"",bonus:dBon});
+      (Array.isArray(w.dmgParts)?w.dmgParts:[]).forEach(function(p){if(p&&(p.dice||p.formula||p.type))roll.push({dice:p.dice||"",type:p.type||"",bonus:p.formula?cf(p.formula):0});});
+      return {roll:roll,nm:w.nm||"",atk:w.isSave?null:atk,dc:dc,isSave:!!w.isSave,dmg:dmg,type:w.dmgType||"",parts:parts,note:w.pr||""};
+    })
+  };
+}
+
+// ─── The compact sheet window ─────────────────────────────────────────────────
+function PsSection({id,label,count,open,setOpen,children}){
+  var on=open===id;
+  return <div style={{borderTop:"1px solid rgba(201,150,42,.18)"}}>
+    <div onClick={function(){setOpen(on?"":id);}} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",cursor:"pointer",userSelect:"none",background:on?"rgba(201,150,42,.08)":"transparent"}}>
+      <span style={{color:GOLDL,fontSize:11,width:10}}>{on?"▾":"▸"}</span>
+      <span style={{fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:on?GOLDL:"rgba(232,213,176,.75)",flex:1}}>{label}</span>
+      {count!=null&&<span style={{fontFamily:"'EB Garamond',serif",fontSize:12,color:"rgba(232,213,176,.4)"}}>{count}</span>}
+    </div>
+    {on&&<div style={{padding:"4px 12px 12px"}}>{children}</div>}
+  </div>;
+}
+function PsChip({k,v,col}){
+  return <div style={{flex:"1 1 0",minWidth:44,textAlign:"center",border:"1px solid rgba("+(col||"201,150,42")+",.3)",borderRadius:3,background:"rgba(0,0,0,.25)",padding:"3px 4px"}}>
+    <div style={{fontFamily:"'Cinzel',serif",fontSize:7,letterSpacing:1,color:"rgba(232,213,176,.45)",textTransform:"uppercase",whiteSpace:"nowrap"}}>{k}</div>
+    <div style={{fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:600,color:PARCH,lineHeight:1.15}}>{v}</div>
+  </div>;
+}
+function PsDesc({text}){
+  if(!text||!(""+text).trim())return null;
+  return <div style={{fontFamily:"'EB Garamond',serif",fontSize:13,lineHeight:1.45,color:"rgba(232,213,176,.85)",marginTop:3}}><Markdown text={text}/></div>;
+}
+function PsToggleRow({head,sub,body,start}){
+  var _o=useState(!!start&&!!body),o=_o[0],setO=_o[1];
+  return <div style={{borderBottom:"1px solid rgba(201,150,42,.08)",padding:"4px 0"}}>
+    <div onClick={function(){if(body)setO(!o);}} style={{display:"flex",alignItems:"baseline",gap:6,cursor:body?"pointer":"default"}}>
+      <span style={{color:"rgba(201,150,42,.6)",fontSize:10,width:8}}>{body?(o?"▾":"▸"):""}</span>
+      <div style={{flex:1,minWidth:0}}>{head}</div>
+      {sub&&<div style={{flexShrink:0,textAlign:"right"}}>{sub}</div>}
+    </div>
+    {o&&body&&<div style={{paddingLeft:14}}>{body}</div>}
+  </div>;
+}
+const psName={fontFamily:"'EB Garamond',serif",fontSize:14,color:PARCH};
+const psMeta={fontFamily:"'EB Garamond',serif",fontSize:12,color:"rgba(232,213,176,.5)",fontStyle:"italic"};
+const psTag=function(t,col){return <span key={t} style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:.8,textTransform:"uppercase",border:"1px solid rgba("+(col||"184,154,240")+",.45)",color:"rgba("+(col||"184,154,240")+",.9)",borderRadius:2,padding:"0 4px",marginLeft:4,whiteSpace:"nowrap"}}>{t}</span>;};
+
+function PsLimits({limits}){
+  var ls=(limits||[]).filter(function(l){return l&&(l.uses!==""&&l.uses!=null);});
+  if(!ls.length)return null;
+  return <span>{ls.map(function(l,i){var u=psN(l.uses),e=psN(l.exp);return <span key={i} style={{fontFamily:"'Cinzel',serif",fontSize:10,color:(u-e)>0?"#7cc98a":"#e07060",marginLeft:6,whiteSpace:"nowrap"}}>{(l.name?l.name+" ":"")+(u-e)+"/"+u}</span>;})}</span>;
+}
+function psList(map,custom){
+  var out=[];
+  Object.keys(map||{}).forEach(function(k){if(map[k])out.push(k);});
+  (custom||[]).forEach(function(x){var n=typeof x==="string"?x:(x&&(x.nm||x.name));if(n)out.push(n);});
+  return out;
+}
+
+function PlayerSheetPanel({c,upd,onClose}){
+  var sh=c.sheet||{};
+  var d=React.useMemo(function(){return psDerive(sh);},[sh]);
+  var _o=useState("attacks"),open=_o[0],setOpen=_o[1];
+  var _e=useState(""),err=_e[0],setErr=_e[1];
+  var cls=(sh.classes&&sh.classes.length?sh.classes:[{nm:sh.cls,lv:""}]).filter(function(x){return x.nm||x.lv;}).map(function(x){return (x.nm||"?")+(x.sub?" ("+x.sub+")":"")+(x.lv?" "+x.lv:"");}).join(" / ");
+  var det=[sh.race,sh.bg,sh.aln].filter(Boolean).join(" · ");
+  var phys=[sh.age&&("Age "+sh.age),sh.ht,sh.wt,sh.ey&&("Eyes "+sh.ey),sh.hr&&("Hair "+sh.hr),sh.sk2&&("Skin "+sh.sk2)].filter(Boolean).join(" · ");
+  var reimport=function(e){
+    var f=e.target.files&&e.target.files[0];e.target.value="";if(!f)return;
+    var r=new FileReader();
+    r.onload=function(){
+      var raw;try{raw=JSON.parse(r.result);}catch(x){setErr("That file isn't valid JSON.");return;}
+      if(!raw||typeof raw!=="object"||(!raw.stats&&!raw.statsBase&&!raw.classes)){setErr("That doesn't look like a character sheet save.");return;}
+      var snap=psSnapshot(raw),dd=psDerive(snap);
+      psThumb(raw.portrait).then(function(th){
+        snap._thumb=th||(c.sheet&&c.sheet._thumb)||"";
+        upd(c.id,function(p){return {sheet:snap,ac:dd.ac,maxHp:dd.hpMax,hp:Math.min(p.hp||0,dd.hpMax),dexMod:dd.init};});
+        setErr("");
+      });
+    };
+    r.readAsText(f);
+  };
+  var skCol=function(s){return s.exp?"#e8c46a":s.prof?GRN:"rgba(232,213,176,.55)";};
+  var isKnownCls=function(n){var l2=sh.spellClasses||[];for(var i=0;i<l2.length;i++){if((n&&l2[i].nm===n)||(!n&&l2.length===1))return !!l2[i].known;}return false;};
+  var spLv=[];for(var l=0;l<=9;l++){var arr=(sh.sp&&sh.sp[l])||[];if(arr.length)spLv.push([l,arr]);}
+  var spCount=spLv.reduce(function(t,x){return t+x[1].length;},0);
+  var slots=[];for(var s2=1;s2<=9;s2++){var mx=psN((sh.slotMax||{})[s2]);if(mx>0)slots.push([s2,mx,mx-psN((sh.slotExp||{})[s2])]);}
+  var ptsMax=sh.spellPtsFormula?PS.computeBonusFromFormula(sh.spellPtsFormula,sh):psN(sh.spellPtsMax);
+  var feats=[["Class features",sh.feat],["Feats",sh.fts],["Species features",sh.spec]];
+  var featCount=feats.reduce(function(t,x){return t+(x[1]||[]).length;},0);
+  var invAll=(sh.inv||[]).concat((sh.attuned_inv||[]).map(function(i){return Object.assign({},i,{_att:true});}));
+  (sh.bags||[]).forEach(function(b){(b.inv||[]).forEach(function(i){invAll.push(Object.assign({},i,{_bag:b.nm||b.name||"Bag"}));});});
+  var COIN=["pp","gp","ep","sp","cp"];
+  var coinN=function(v){return parseFloat(v)||0;};
+  // same conversion the Character Sheet uses for its own coin total
+  var toGP=function(cur){return +(coinN(cur.cp)/100+coinN(cur.sp)/10+coinN(cur.ep)/2+coinN(cur.gp)+coinN(cur.pp)*10).toFixed(4);};
+  var wallets=[["On person",sh.cur||{}]];
+  (sh.bags||[]).forEach(function(b){wallets.push([b.nm||b.name||"Bag",b.cur||{}]);});
+  var coinSum={};COIN.forEach(function(k){coinSum[k]=wallets.reduce(function(t,w){return t+coinN(w[1][k]);},0);});
+  var totalGp=wallets.reduce(function(t,w){return t+toGP(w[1]);},0);
+  var coinTxt=function(o){return COIN.filter(function(k){return coinN(o[k])>0;}).map(function(k){return coinN(o[k])+" "+k;}).join(" · ");};
+  var coins=coinTxt(coinSum);
+  var coinWhere=wallets.filter(function(w){return coinTxt(w[1]);}).map(function(w){return w[0]+": "+coinTxt(w[1]);});
+  var armor=psList(sh.profA&&sh.profA.armor,[]).concat(psList(sh.profA&&sh.profA.weapons,sh.profA&&sh.profA.custom));
+  var tools=psList(sh.profT&&sh.profT.tools,sh.profT&&sh.profT.custom);
+  var langs=psList(sh.profL&&sh.profL.langs,sh.profL&&sh.profL.custom);
+  [["aprof",armor],["tprof",tools],["lang",langs]].forEach(function(p){if(sh[p[0]]&&(""+sh[p[0]]).trim())p[1].push(sh[p[0]]);});
+  var res=sh.dmgRes||{};
+  var cr=sh.condRes&&typeof sh.condRes==="object"?sh.condRes:{};
+  var pretty=function(id){id=""+id;var nm=/-nonmagical$/.test(id);var b=id.replace(/-nonmagical$/,"");return b.charAt(0).toUpperCase()+b.slice(1)+(nm?" (non-magical)":"");};
+  var L=function(a){return (a||[]).map(pretty).join(", ");};
+  var senses=Object.keys(sh.senses||{}).filter(function(k){return sh.senses[k]&&sh.senses[k].on;}).map(function(k){return k+(sh.senses[k].ft?" "+sh.senses[k].ft+" ft":"");});
+  var expl=[];for(var t=1;t<=5;t++){((sh.expl&&sh.expl[t])||[]).forEach(function(x){expl.push([t,x]);});}
+  var line=function(k,arr){return arr.length?<div style={{marginBottom:6}}><div style={Object.assign({},lbl,{fontSize:8})}>{k}</div><div style={Object.assign({},psName,{fontSize:13})}>{arr.join(", ")}</div></div>:null;};
+  return ReactDOM.createPortal(
+    <div style={{position:"fixed",inset:0,zIndex:99998,background:"rgba(0,0,0,.55)"}} onClick={onClose}>
+      <div className="ps-panel" onClick={function(e){e.stopPropagation();}} style={{position:"absolute",top:0,right:0,bottom:0,width:"min(560px,100vw)",height:"100dvh",maxHeight:"100dvh",display:"flex",flexDirection:"column",background:"#14100a",borderLeft:"1px solid rgba(201,150,42,.4)",boxShadow:"-8px 0 40px rgba(0,0,0,.8)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderBottom:"1px solid rgba(201,150,42,.3)",background:"#1a1208",flexShrink:0}}>
+          {sh._thumb&&<img src={sh._thumb} alt="" style={{width:38,height:38,borderRadius:"50%",border:"1px solid rgba(201,150,42,.5)",objectFit:"cover",flexShrink:0}}/>}
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontFamily:"'Cinzel',serif",fontSize:15,color:GOLDL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sh.name||c.name}</div>
+            <div style={{fontFamily:"'EB Garamond',serif",fontSize:12,color:"rgba(232,213,176,.6)",lineHeight:1.25}}>{cls||"No class"}{det?" · "+det:""}</div>
+          </div>
+          <label title="Re-import this player's updated .json (keeps current HP)" style={Object.assign({},btn("74,156,92"),{padding:"4px 8px",fontSize:9,flexShrink:0})}>↻ Update<input type="file" accept=".json,application/json" onChange={reimport} style={{display:"none"}}/></label>
+          <div onClick={onClose} title="Close" style={{cursor:"pointer",color:"rgba(232,213,176,.7)",fontSize:20,padding:"0 6px",userSelect:"none",flexShrink:0}}>✕</div>
+        </div>
+        <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
+          {err&&<div style={{padding:"6px 12px",color:"#e07060",fontFamily:"'EB Garamond',serif",fontSize:13}}>{err}</div>}
+          <div style={{padding:"8px 10px 6px",display:"flex",flexDirection:"column",gap:6}}>
+            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              <PsChip k="AC" v={d.ac}/><PsChip k="HP" v={(c.hp==null?d.hpCur:c.hp)+"/"+(c.maxHp==null?d.hpMax:c.maxHp)} col="224,112,96"/>
+              <PsChip k="Temp" v={d.hpTemp}/><PsChip k="Speed" v={d.speed}/><PsChip k="Init" v={psF(d.init)}/><PsChip k="Prof" v={psF(d.pb)}/>
+            </div>
+            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              <PsChip k="Level" v={d.level}/><PsChip k="Pass. Perc" v={d.passP}/><PsChip k="Pass. Ins" v={d.passI}/><PsChip k="Pass. Inv" v={d.passV}/>
+              {d.casters.map(function(x,i){return <PsChip key={"dc"+i} k={d.casters.length>1?x.nm.slice(0,6)+" DC/Atk":"DC / Atk"} v={x.dc+" / "+psF(x.atk)} col="184,154,240"/>;})}
+              {d.otherDcs.map(function(x,i){return <PsChip key={"od"+i} k={(x.label||"DC").replace(/\s*\(.*\)$/,"").slice(0,12)} v={x.value} col="184,154,240"/>;})}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(6,minmax(0,1fr))",gap:4}}>
+              {d.mods.map(function(m,i){var sv=d.saves[i];return <div key={m.a} style={{textAlign:"center",border:"1px solid rgba(201,150,42,.3)",borderRadius:3,background:"rgba(0,0,0,.25)",padding:"3px 0"}}>
+                <div style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,color:"rgba(232,213,176,.5)"}}>{m.a}</div>
+                <div style={{fontFamily:"'Cinzel',serif",fontSize:16,fontWeight:700,color:PARCH,lineHeight:1.1}}>{psF(m.m)}</div>
+                <div style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.5)",lineHeight:1.1}}>{m.score}</div>
+                <div title="Saving throw" style={{fontFamily:"'Cinzel',serif",fontSize:9,color:sv.prof?GRN:"rgba(232,213,176,.5)",marginTop:1,borderTop:"1px solid rgba(201,150,42,.12)"}}>{sv.prof?"● ":""}{psF(sv.v)}</div>
+              </div>;})}
+            </div>
+            {(d.exh>0||sh.ins||(res.res&&res.res.length)||(res.imm&&res.imm.length)||(res.vul&&res.vul.length)||(cr.adv&&cr.adv.length)||(cr.imm&&cr.imm.length)||senses.length>0)&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:12,color:"rgba(232,213,176,.75)",lineHeight:1.45}}>
+              {(d.exh>0||sh.ins)&&<div>{d.exh>0&&<span style={{color:"#e07060",marginRight:8}}>Exhaustion {d.exh}</span>}{sh.ins&&<span style={{color:GOLDL}}>Inspired</span>}</div>}
+              {res.res&&res.res.length>0&&<div><b style={{color:"#7cc98a"}}>Resist</b> {L(res.res)}</div>}
+              {res.imm&&res.imm.length>0&&<div><b style={{color:GOLDL}}>Immune</b> {L(res.imm)}</div>}
+              {res.vul&&res.vul.length>0&&<div><b style={{color:"#e07060"}}>Vulnerable</b> {L(res.vul)}</div>}
+              {cr.imm&&cr.imm.length>0&&<div><b style={{color:"#4fc3bd"}}>Condition immune</b> {L(cr.imm)}</div>}
+              {cr.adv&&cr.adv.length>0&&<div><b style={{color:"#7cc98a"}}>Adv. on saves vs</b> {L(cr.adv)}</div>}
+              {senses.length>0&&<div><b style={{color:"#8ab4e8"}}>Senses</b> {senses.join(", ")}</div>}
+            </div>}
+            {phys&&<div style={psMeta}>{phys}</div>}
+          </div>
+
+          <PsSection id="attacks" label="Attacks" count={d.weapons.length} open={open} setOpen={setOpen}>
+            {d.weapons.length===0&&<div style={psMeta}>No attacks.</div>}
+            {d.weapons.map(function(w,i){return <PsToggleRow key={i} head={<span style={psName}>{w.nm||"—"}</span>}
+              sub={<span style={{fontFamily:"'Cinzel',serif",fontSize:12,color:GOLDL,whiteSpace:"nowrap"}}>{w.isSave?(w.dc!=null?"DC "+w.dc:"Save"):psF(w.atk)}{w.dmg?" · "+w.dmg:""}{w.type?" "+w.type:""}</span>}
+              body={(w.parts.length||w.note)?<div><div style={psMeta}>{w.parts.join(" + ")}</div><PsDesc text={w.note}/></div>:null}/>;})}
+          </PsSection>
+          <PsSection id="skills" label="Skills" count={d.skills.filter(function(s){return s.prof;}).length+" prof"} open={open} setOpen={setOpen}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:"1px 14px"}}>
+              {d.skills.map(function(s){return <div key={s.n} style={{display:"flex",justifyContent:"space-between",gap:6,fontFamily:"'EB Garamond',serif",fontSize:13,color:skCol(s),borderBottom:"1px solid rgba(201,150,42,.07)"}}>
+                <span>{s.exp?"◆ ":s.prof?"● ":"○ "}{s.n} <span style={{fontSize:10,opacity:.55}}>{s.a}</span></span><b style={{fontFamily:"'Cinzel',serif",fontSize:12}}>{psF(s.v)}</b></div>;})}
+            </div>
+          </PsSection>
+          <PsSection id="spells" label="Spells" count={spCount+(d.casters.length?"":"")} open={open} setOpen={setOpen}>
+            {(slots.length>0||ptsMax>0)&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+              {slots.map(function(x){return <span key={x[0]} style={{fontFamily:"'Cinzel',serif",fontSize:11,border:"1px solid rgba(184,154,240,.4)",borderRadius:3,padding:"1px 6px",color:x[2]>0?"#c8b4f4":"#e07060"}}>L{x[0]} {x[2]}/{x[1]}</span>;})}
+              {ptsMax>0&&<span style={{fontFamily:"'Cinzel',serif",fontSize:11,border:"1px solid rgba(201,150,42,.4)",borderRadius:3,padding:"1px 6px",color:GOLDL}}>Points {ptsMax-psN(sh.spellPtsUsed)}/{ptsMax}</span>}
+            </div>}
+            {spLv.length===0&&<div style={psMeta}>No spells.</div>}
+            {spLv.map(function(g){return <div key={g[0]} style={{marginBottom:6}}>
+              <div style={Object.assign({},lbl,{color:"rgba(184,154,240,.7)",marginBottom:2})}>{g[0]===0?"Cantrips":"Level "+g[0]}</div>
+              {g[1].map(function(sp,i){var det2=[sp.ti,sp.rng,sp.cmp,sp.dur].filter(Boolean).join(" · ");return <PsToggleRow key={i}
+                head={<span style={psName}>{sp.nm||"—"}{sp.conc&&psTag("C")}{sp.ritual&&psTag("R")}{sp.bonus&&psTag("Bonus","201,150,42")}{!sp.prep&&!sp.bonus&&g[0]>0&&!isKnownCls(sp.cls)&&psTag("Not prep","232,213,176")}</span>}
+                sub={sp.cls?<span style={psMeta}>{sp.cls}</span>:null}
+                body={(det2||sp.nt)?<div>{det2&&<div style={psMeta}>{det2}</div>}<PsDesc text={sp.nt}/></div>:null}/>;})}
+            </div>;})}
+          </PsSection>
+          <PsSection id="features" label="Features & Feats" count={featCount} open={open} setOpen={setOpen}>
+            {featCount===0&&<div style={psMeta}>None.</div>}
+            {feats.map(function(g){return (g[1]||[]).length>0&&<div key={g[0]} style={{marginBottom:6}}>
+              <div style={Object.assign({},lbl,{marginBottom:2})}>{g[0]}</div>
+              {g[1].map(function(f,i){return <PsToggleRow key={i}
+                head={<span style={psName}>{f.nm||"—"}{f.lv?psTag("Lv "+f.lv,"201,150,42"):null}</span>}
+                sub={<PsLimits limits={f.limited?f.limits:null}/>}
+                body={(f.ds||f.src||f.rc)?<div>{f.src&&<div style={psMeta}>{typeof f.src==="string"?f.src:""}</div>}<PsDesc text={f.ds}/></div>:null}/>;})}
+            </div>;})}
+          </PsSection>
+          {expl.length>0&&<PsSection id="exploits" label="Exploits" count={expl.length} open={open} setOpen={setOpen}>
+            {sh.exploitDice!==""&&sh.exploitDice!=null&&<div style={Object.assign({},psMeta,{marginBottom:4})}>Dice {psN(sh.exploitDice)-psN(sh.exploitDiceExp)}/{psN(sh.exploitDice)} ({sh.exploitDie||"d4"})</div>}
+            {expl.map(function(x,i){var e=x[1]||{};return <PsToggleRow key={i} head={<span style={psName}>{e.nm||e.name||"—"}{psTag("T"+x[0],"201,150,42")}</span>} sub={null} body={e.nt||e.ds?<PsDesc text={e.nt||e.ds}/>:null}/>;})}
+          </PsSection>}
+          <PsSection id="inv" label="Inventory" count={invAll.length} open={open} setOpen={setOpen}>
+            {<div style={{marginBottom:6}}>
+              <div style={{fontFamily:"'Cinzel',serif",fontSize:13,color:GOLDL}}>Total {totalGp.toFixed(2)} gp {coins&&<span style={{fontSize:12,color:"rgba(232,213,176,.7)"}}>= {coins}</span>}</div>
+              {coinWhere.length>1&&<div style={psMeta}>{coinWhere.join("  |  ")}</div>}
+            </div>}
+            {invAll.length===0&&<div style={psMeta}>Empty.</div>}
+            {invAll.map(function(it,i){
+              var ch=it.charges&&it.charges.enabled&&(parseInt(it.charges.max)||0)>0?it.charges:null;
+              var mx=ch?parseInt(ch.max)||0:0,rem=ch?Math.max(0,mx-(parseInt(ch.used)||0)):0;
+              var chCol=rem>mx*0.6?"#7cc98a":rem>mx*0.2?"#e8c46a":"#e07060";
+              var hasBody=!!((it.nt&&(""+it.nt).trim())||(it.desc&&(""+it.desc).trim())||(ch&&(ch.restore||"").trim()));
+              return <PsToggleRow key={i}
+              head={<span style={psName}>{it.nm||"—"}{it.eq&&psTag("Equipped","74,156,92")}{it.wl&&psTag("Worn","74,156,92")}{it._att&&psTag("Attuned","201,150,42")}{it._bag&&psTag(it._bag,"232,213,176")}</span>}
+              sub={<span>{ch&&<span title="Charges" style={{fontFamily:"'Cinzel',serif",fontSize:11,color:chCol,marginRight:6,whiteSpace:"nowrap"}}>⚡ {rem}/{mx}</span>}{it.qt!==""&&it.qt!=null?<span style={psMeta}>×{it.qt}</span>:null}</span>}
+              body={hasBody?<div>{it.nt&&(""+it.nt).trim()&&<div style={psMeta}>{it.nt}</div>}{ch&&(ch.restore||"").trim()&&<div style={psMeta}>Recharge: {ch.restore}</div>}<PsDesc text={it.desc}/></div>:null}/>;})}
+          </PsSection>
+          <PsSection id="prof" label="Proficiencies" open={open} setOpen={setOpen}>
+            {line("Armor & weapons",armor)}{line("Tools",tools)}{line("Languages",langs)}
+            {armor.length+tools.length+langs.length===0&&<div style={psMeta}>None recorded.</div>}
+          </PsSection>
+          <div style={{borderTop:"1px solid rgba(201,150,42,.18)",height:24}}/>
+        </div>
+      </div>
+    </div>,document.body);
+}
+
+// Reads one or more sheet .json files and turns each into a player combatant.
+function psReadFiles(files,onAdd,setErr){
+  var list=Array.prototype.slice.call(files||[]),bad=[];
+  var next=function(){
+    var f=list.shift();
+    if(!f){setErr(bad.length?"Couldn't read: "+bad.join(", ")+" (not a character sheet save).":"");return;}
+    var r=new FileReader();
+    r.onload=function(){
+      var raw=null;try{raw=JSON.parse(r.result);}catch(e){}
+      if(!raw||typeof raw!=="object"||Array.isArray(raw)||(!raw.stats&&!raw.statsBase&&!raw.classes)){bad.push(f.name);next();return;}
+      var snap=psSnapshot(raw),dd=psDerive(snap);
+      psThumb(raw.portrait).then(function(th){
+        snap._thumb=th;
+        onAdd({id:uid(),name:(snap.name||"").trim()||f.name.replace(/\.json$/i,""),type:"pc",init:null,dexMod:dd.init,hp:Math.min(dd.hpCur,dd.hpMax||dd.hpCur),maxHp:dd.hpMax,ac:dd.ac,conditions:[],spells:[],statblockMd:"",images:[],expanded:false,sheet:snap});
+        next();
+      });
+    };
+    r.onerror=function(){bad.push(f.name);next();};
+    r.readAsText(f);
+  };
+  next();
+}
+
 function AddPCForm({onAdd}){
+  const [impErr,setImpErr]=useState("");
+  const importEl=function(mt){return <label title="Add players from the .json files saved by the Character Sheet" style={Object.assign(btn("184,154,240"),{display:"inline-block",marginTop:mt,marginLeft:mt?8:0})}>⇑ Import player JSON<input type="file" accept=".json,application/json" multiple onChange={function(e){var fs=e.target.files;psReadFiles(fs,onAdd,setImpErr);e.target.value="";}} style={{display:"none"}}/></label>;};
+  const impErrEl=impErr?<div style={{marginTop:6,fontFamily:"'EB Garamond',serif",fontSize:12,color:"#e07060"}}>{impErr}</div>:null;
   const [open,setOpen]=useState(false);
   const [nm,setNm]=useState(""),[hp,setHp]=useState(""),[ac,setAc]=useState(""),[init,setInit]=useState(""),[dex,setDex]=useState("");
   const submit=function(){if(!nm.trim())return;var maxHp=parseInt(hp)||0;onAdd({id:uid(),name:nm.trim(),type:"pc",init:init===""?null:parseInt(init)||0,dexMod:dex===""?0:parseInt(dex)||0,hp:maxHp,maxHp:maxHp,ac:parseInt(ac)||10,conditions:[],spells:[],statblockMd:"",images:[],expanded:false});setNm("");setHp("");setAc("");setInit("");setDex("");};
-  if(!open) return <div onClick={function(){setOpen(true);}} style={Object.assign(btn("74,156,92"),{display:"inline-block",marginTop:10})}>+ Add Player Character</div>;
+  if(!open) return <React.Fragment><div onClick={function(){setOpen(true);}} style={Object.assign(btn("74,156,92"),{display:"inline-block",marginTop:10})}>+ Add Player Character</div>{importEl(10)}{impErrEl}</React.Fragment>;
   return <div style={{marginTop:12,padding:"12px 14px",border:"1px dashed rgba(74,156,92,.4)",borderRadius:4,display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end"}}>
     <div><div style={lbl}>Name</div><input value={nm} onChange={function(e){setNm(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")submit();}} style={Object.assign({},inp,{width:140})} autoFocus/></div>
     <div><div style={lbl}>Max HP</div><input value={hp} onChange={function(e){setHp(e.target.value);}} style={Object.assign({},inp,{width:60})}/></div>
@@ -5660,7 +6130,9 @@ function AddPCForm({onAdd}){
     <div><div style={lbl}>Init</div><input value={init} onChange={function(e){setInit(e.target.value);}} placeholder="set" style={Object.assign({},inp,{width:46})}/></div>
     <div><div style={lbl}>Init bonus</div><input value={dex} onChange={function(e){setDex(e.target.value);}} placeholder="0" title="Initiative bonus — added to the d20 when you roll initiative" style={Object.assign({},inp,{width:46})}/></div>
     <div onClick={submit} style={btn("74,156,92")}>Add</div>
+    {importEl(0)}
     <div onClick={function(){setOpen(false);}} style={btn("232,213,176")}>Done</div>
+    {impErrEl}
   </div>;
 }
 
@@ -5889,7 +6361,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.6.1</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.8.2</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
