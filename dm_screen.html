@@ -6101,7 +6101,7 @@ function PlayerSheetPanel({c,upd,onClose}){
   var wmap=(sh.profA&&sh.profA.weapons)||{},wrest=Object.assign({},wmap),wgrp=[];
   ["Simple","Martial"].forEach(function(g){var nm=[];Object.keys(WEAPON_DATA).forEach(function(cat){if(cat.indexOf(g)===0)WEAPON_DATA[cat].forEach(function(w){nm.push(w.n);});});if(nm.length&&nm.every(function(n){return wmap[n];})){wgrp.push(g+" Weapons");nm.forEach(function(n){delete wrest[n];});}});
   var armor=psList(sh.profA&&sh.profA.armor,[]).concat(wgrp,psList(wrest,sh.profA&&sh.profA.custom));
-  var tools=psList(sh.profT&&sh.profT.tools,sh.profT&&sh.profT.custom).map(function(n){var kd=n==="Musical Instrument"?(((sh.profT.meta||{})[n]||{}).kind||"").trim():"";return kd?n+" ("+kd+")":n;});
+  var tools=psList(sh.profT&&sh.profT.tools,sh.profT&&sh.profT.custom).map(function(n){var KT={"Musical Instrument":"Musical Instruments","Gaming Set":"Gaming Sets","Land and Water Vehicles":"Land and Water Vehicles"};if(!KT[n])return n;var m0=(sh.profT.meta||{})[n]||{};var kl=(Array.isArray(m0.kinds)?m0.kinds:(m0.kind||"").split(",")).map(function(x){return (x||"").trim();}).filter(Boolean);return kl.length?(kl.length>1?KT[n]:n)+" ("+kl.join(", ")+")":n;});
   var langs=psList(sh.profL&&sh.profL.langs,sh.profL&&sh.profL.custom);
   [["aprof",armor],["tprof",tools],["lang",langs]].forEach(function(p){if(sh[p[0]]&&(""+sh[p[0]]).trim())p[1].push(sh[p[0]]);});
   var res=sh.dmgRes||{};
@@ -6688,7 +6688,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.17.3</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.18.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
