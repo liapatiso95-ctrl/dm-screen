@@ -6370,7 +6370,7 @@ function SyncButton({combat,setCombat}){
         var dr=await syncGet(b+"/data/"+encodeURIComponent(x.syncId)+".json");
         if(!dr.ok)continue;
         var txt=await dr.json();if(!txt)continue;
-        var snap=syncParse(txt);try{var rw=JSON.parse(txt);window.__dl=window.__dl||{};window.__dl[x.syncId]="got hpt "+JSON.stringify(rw.hpt)+" at "+new Date().toLocaleTimeString()+" for "+m.updated;}catch(e2){}
+        var snap=syncParse(txt);
         setCombat((function(cid,sn,up){return function(p){return Object.assign({},p,{combatants:(p.combatants||[]).map(function(y){return y.id===cid?Object.assign({},y,psSyncPatch(y,sn,up)):y;})});};})(x.id,snap,m.updated));
       }
       setMsg({t:"Checked "+new Date().toLocaleTimeString(),bad:false});
@@ -6430,7 +6430,7 @@ function SyncButton({combat,setCombat}){
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontFamily:"'EB Garamond',serif",fontSize:15,color:PARCH,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.name||"Player"}</div>
                 <div style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.45)"}}>{m.updated?"sent "+new Date(m.updated).toLocaleTimeString():""}</div>
-                {inCombat[id]&&(function(){var pc=(combat.combatants||[]).filter(function(y){return y.syncId===id;})[0];if(!pc||!pc.sheet)return null;return <div style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.45)"}}>{"DM has "+(pc.syncUpdated?new Date(pc.syncUpdated).toLocaleTimeString():"-")+" · stored sheet temp "+psDerive(pc.sheet).hpTemp+" · row temp "+(pc.tempHp)+" · "+((window.__dl&&window.__dl[id])||"nothing downloaded since opening")}</div>;})()}
+                {inCombat[id]&&(function(){var pc=(combat.combatants||[]).filter(function(y){return y.syncId===id;})[0];if(!pc||!pc.sheet)return null;return <div style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.45)"}}>{"DM has "+(pc.syncUpdated?new Date(pc.syncUpdated).toLocaleTimeString():"-")}</div>;})()}
               </div>
               {inCombat[id]?<span style={{fontFamily:"'Cinzel',serif",fontSize:10,color:"#6fcf85",letterSpacing:1}}>● IN COMBAT</span>:<div onClick={function(){addPlayer(id);}} style={btn("74,156,92")}>Add</div>}
             </div>;})}
@@ -6688,7 +6688,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.17.2</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.17.3</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
