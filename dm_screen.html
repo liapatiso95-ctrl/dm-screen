@@ -6313,6 +6313,11 @@ function psSyncPatch(c,snap,updated){
   if(prev.init!==now.init)p.dexMod=now.init;
   return p;
 }
+// Every read carries a unique value so no cache along the way can hand back an older copy; if the database refuses it, ask again plainly.
+async function syncGet(url){
+  try{var r=await fetch(url+(url.indexOf("?")<0?"?":"&")+"_="+Date.now()+Math.floor(Math.random()*1000),{cache:"no-store"});if(r.ok)return r;}catch(e){}
+  return fetch(url,{cache:"no-store"});
+}
 function SyncButton({combat,setCombat}){
   const [cfg,setCfg]=useState(syncLoad);
   const [open,setOpen]=useState(false);
@@ -6330,12 +6335,12 @@ function SyncButton({combat,setCombat}){
     busy.current=true;
     try{
       var b=syncBase(c);
-      var r=await fetch(b+"/meta.json",{cache:"no-store"});
+      var r=await syncGet(b+"/meta.json");
       if(!r.ok)throw new Error("HTTP "+r.status);
       var meta=(await r.json())||{};
       setFound(meta);
       try{
-        var rr=await fetch(b+"/rolls.json",{cache:"no-store"});
+        var rr=await syncGet(b+"/rolls.json");
         if(rr.ok){
           var all=(await rr.json())||{};
           var first=!seenRolls.current;
@@ -6362,7 +6367,7 @@ function SyncButton({combat,setCombat}){
       for(var i=0;i<list.length;i++){
         var x=list[i],m=x.syncId&&meta[x.syncId];
         if(!m||m.updated===x.syncUpdated)continue;
-        var dr=await fetch(b+"/data/"+encodeURIComponent(x.syncId)+".json",{cache:"no-store"});
+        var dr=await syncGet(b+"/data/"+encodeURIComponent(x.syncId)+".json");
         if(!dr.ok)continue;
         var txt=await dr.json();if(!txt)continue;
         var snap=syncParse(txt);try{var rw=JSON.parse(txt);window.__dl=window.__dl||{};window.__dl[x.syncId]="got hpt "+JSON.stringify(rw.hpt)+" at "+new Date().toLocaleTimeString()+" for "+m.updated;}catch(e2){}
@@ -6382,7 +6387,7 @@ function SyncButton({combat,setCombat}){
   const addPlayer=async function(id){
     try{
       var b=syncBase(cfg),m=found[id]||{};
-      var dr=await fetch(b+"/data/"+encodeURIComponent(id)+".json",{cache:"no-store"});
+      var dr=await syncGet(b+"/data/"+encodeURIComponent(id)+".json");
       var txt=await dr.json();
       if(!txt)throw new Error("no data yet");
       var snap=syncParse(txt);
@@ -6683,7 +6688,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.17.1</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.17.2</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
