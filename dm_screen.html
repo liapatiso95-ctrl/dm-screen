@@ -5886,11 +5886,11 @@ function psSnapshot(raw){
   PS_ABL.forEach(function(a){if(o.statsBase[a]===""||o.statsBase[a]==null){var v=o.stats&&o.stats[a];if(v!==""&&v!=null)o.statsBase[a]=v;}});
   return o;
 }
-function psThumb(src){
+function psThumb(src,ax,ay,sc){ax=+ax||0;ay=+ay||0;sc=+sc||1;
   return new Promise(function(res){
     if(!src||typeof src!=="string"){res("");return;}
     var im=new Image();
-    im.onload=function(){try{var s=96,cv=document.createElement("canvas");cv.width=s;cv.height=s;var cx=cv.getContext("2d");var m=Math.min(im.width,im.height);cx.drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,s,s);res(cv.toDataURL("image/jpeg",.8));}catch(e){res("");}};
+    im.onload=function(){try{var s=96,cv=document.createElement("canvas");cv.width=s;cv.height=s;var cx=cv.getContext("2d");var k=s/84;cx.fillStyle='#000';cx.fillRect(0,0,s,s);cx.translate(s/2+ax*k,s/2+ay*k);cx.scale(sc*k,sc*k);cx.drawImage(im,-im.width/2,-im.height/2);res(cv.toDataURL("image/jpeg",.8));}catch(e){res("");}};
     im.onerror=function(){res("");};
     im.src=src;
   });
@@ -6044,7 +6044,7 @@ function PlayerSheetPanel({c,upd,onClose}){
       var raw;try{raw=JSON.parse(r.result);}catch(x){setErr("That file isn't valid JSON.");return;}
       if(!raw||typeof raw!=="object"||(!raw.stats&&!raw.statsBase&&!raw.classes)){setErr("That doesn't look like a character sheet save.");return;}
       var snap=psSnapshot(raw),dd=psDerive(snap);
-      psThumb(raw.portrait).then(function(th){
+      psThumb(raw.portrait,raw.avX,raw.avY,raw.avScale).then(function(th){
         snap._thumb=th||(c.sheet&&c.sheet._thumb)||"";
         upd(c.id,function(p){return {sheet:snap,ac:dd.ac,maxHp:dd.hpMax,hp:Math.min(p.hp||0,dd.hpMax),dexMod:dd.init};});
         setErr("");
@@ -6280,7 +6280,7 @@ function psReadFiles(files,onAdd,setErr){
       var raw=null;try{raw=JSON.parse(r.result);}catch(e){}
       if(!raw||typeof raw!=="object"||Array.isArray(raw)||(!raw.stats&&!raw.statsBase&&!raw.classes)){bad.push(f.name);next();return;}
       var snap=psSnapshot(raw),dd=psDerive(snap);
-      psThumb(raw.portrait).then(function(th){
+      psThumb(raw.portrait,raw.avX,raw.avY,raw.avScale).then(function(th){
         snap._thumb=th;
         onAdd({id:uid(),name:(snap.name||"").trim()||f.name.replace(/\.json$/i,""),type:"pc",init:null,dexMod:dd.init,hp:Math.min(dd.hpCur,dd.hpMax||dd.hpCur),maxHp:dd.hpMax,tempHp:dd.hpTemp,ac:dd.ac,conditions:[],spells:[],statblockMd:"",images:[],expanded:false,sheet:snap});
         next();
@@ -6330,12 +6330,12 @@ function SyncButton({combat,setCombat}){
     busy.current=true;
     try{
       var b=syncBase(c);
-      var r=await fetch(b+"/meta.json");
+      var r=await fetch(b+"/meta.json",{cache:"no-store"});
       if(!r.ok)throw new Error("HTTP "+r.status);
       var meta=(await r.json())||{};
       setFound(meta);
       try{
-        var rr=await fetch(b+"/rolls.json");
+        var rr=await fetch(b+"/rolls.json",{cache:"no-store"});
         if(rr.ok){
           var all=(await rr.json())||{};
           var first=!seenRolls.current;
@@ -6361,8 +6361,8 @@ function SyncButton({combat,setCombat}){
       var list=(comb.current.combatants||[]).slice();
       for(var i=0;i<list.length;i++){
         var x=list[i],m=x.syncId&&meta[x.syncId];
-        if(!m||!(m.updated>(x.syncUpdated||0)))continue;
-        var dr=await fetch(b+"/data/"+encodeURIComponent(x.syncId)+".json");
+        if(!m||m.updated===x.syncUpdated)continue;
+        var dr=await fetch(b+"/data/"+encodeURIComponent(x.syncId)+".json",{cache:"no-store"});
         if(!dr.ok)continue;
         var txt=await dr.json();if(!txt)continue;
         var snap=syncParse(txt);
@@ -6382,7 +6382,7 @@ function SyncButton({combat,setCombat}){
   const addPlayer=async function(id){
     try{
       var b=syncBase(cfg),m=found[id]||{};
-      var dr=await fetch(b+"/data/"+encodeURIComponent(id)+".json");
+      var dr=await fetch(b+"/data/"+encodeURIComponent(id)+".json",{cache:"no-store"});
       var txt=await dr.json();
       if(!txt)throw new Error("no data yet");
       var snap=syncParse(txt);
@@ -6424,7 +6424,8 @@ function SyncButton({combat,setCombat}){
             {ids.map(function(id){var m=found[id]||{};return <div key={id} style={{display:"flex",alignItems:"center",gap:8,borderBottom:"1px solid rgba(201,150,42,.12)",padding:"6px 0"}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontFamily:"'EB Garamond',serif",fontSize:15,color:PARCH,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.name||"Player"}</div>
-                <div style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.45)"}}>{m.updated?"updated "+new Date(m.updated).toLocaleTimeString():""}</div>
+                <div style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.45)"}}>{m.updated?"sent "+new Date(m.updated).toLocaleTimeString():""}</div>
+                {inCombat[id]&&(function(){var pc=(combat.combatants||[]).filter(function(y){return y.syncId===id;})[0];if(!pc||!pc.sheet)return null;return <div style={{fontFamily:"'EB Garamond',serif",fontSize:11,color:"rgba(232,213,176,.45)"}}>{"DM has "+(pc.syncUpdated?new Date(pc.syncUpdated).toLocaleTimeString():"-")}</div>;})()}
               </div>
               {inCombat[id]?<span style={{fontFamily:"'Cinzel',serif",fontSize:10,color:"#6fcf85",letterSpacing:1}}>● IN COMBAT</span>:<div onClick={function(){addPlayer(id);}} style={btn("74,156,92")}>Add</div>}
             </div>;})}
@@ -6682,7 +6683,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.16.1</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.17.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
