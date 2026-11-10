@@ -1255,6 +1255,23 @@ function _featDescFromEntries(entries){
   });
   return formatted.join("\n").trim();
 }
+// Ability scores a feat can raise, read from the feat's own "ability" key (5etools): fixed {str:1} or {choose:{from:[...]}} entries.
+// Without that key, only trust the description when it has an "Ability Score Increase" line (a spellcasting-ability note is not an increase).
+function _featAbilitiesJson(ft,fullDesc){
+  var map={str:"STR",dex:"DEX",con:"CON",int:"INT",wis:"WIS",cha:"CHA"},out=[];
+  function add(k){var u=map[(""+k).toLowerCase()];if(u&&out.indexOf(u)<0)out.push(u);}
+  if(Array.isArray(ft.ability)&&ft.ability.length){
+    ft.ability.forEach(function(a){
+      if(!a||typeof a!=="object") return;
+      Object.keys(a).forEach(function(k){
+        if(k==="choose"&&a.choose){var c=a.choose;(c.from||(c.weighted&&c.weighted.from)||[]).forEach(add);}
+        else if(k!=="hidden") add(k);
+      });
+    });
+    return out;
+  }
+  return /Ability Score Increase/i.test(fullDesc)?_featAbilities(fullDesc):[];
+}
 function convertFeatJson(arr){
   var out={};
   (arr||[]).forEach(function(ft){
@@ -1262,7 +1279,7 @@ function convertFeatJson(arr){
     var prereq=format5ePrerequisite(ft.prerequisite);
     var fullDesc=_featDescFromEntries(ft.entries);
     if(!fullDesc&&!prereq) return; // skip stubs
-    var abilities=_featAbilities(fullDesc);
+    var abilities=_featAbilitiesJson(ft,fullDesc);
     if(prereq) fullDesc=("***Prerequisite: "+prereq+"***\n"+(fullDesc||"")).trim();
     out[ft.name.toLowerCase()]={name:ft.name,desc:fullDesc,prereq:prereq,abilities:abilities,source:ft.source||""};
   });
@@ -1679,6 +1696,16 @@ function resolve5eCopy(it,index,depth){
         var addItems=op.items==null?[]:(Array.isArray(op.items)?op.items:[op.items]);
         if(op.mode==="appendArr") merged[field]=cur.concat(addItems);
         else if(op.mode==="prependArr") merged[field]=addItems.concat(cur);
+        else if(op.mode==="replaceArr"&&op.replace!=null&&op.replace!==undefined&&typeof op.replace!=="object"||op.mode==="replaceArr"&&op.replace&&typeof op.replace==="object"){
+          // Replace ONE entry (by name, position or {index}) instead of the whole list.
+          var ri=-1,rp=op.replace;
+          if(typeof rp==="string") ri=cur.findIndex(function(x){return x&&(x.name===rp||x===rp);});
+          else if(typeof rp==="number") ri=rp;
+          else if(rp&&rp.index!=null) ri=rp.index;
+          else if(rp&&rp.name) ri=cur.findIndex(function(x){return x&&x.name===rp.name;});
+          if(ri>=0){var cp=cur.slice();cp.splice.apply(cp,[ri,1].concat(addItems));merged[field]=cp;}
+          else merged[field]=cur.concat(addItems);
+        }
         else if(op.mode==="replaceArr"||op.mode==="replaceTxt") merged[field]=addItems;
         else if(op.mode==="insertArr"){
           var idx=(op.index==null?cur.length:op.index);
@@ -3962,8 +3989,8 @@ function ConditionReferenceModal({onClose}){
 // ──────────────────────────────────────────────────────────────────────────────
 
 
-// ─── Species Compendium (races.md) ───────────────────────────────────────────
-const SPECIES_MD_URL="https://raw.githubusercontent.com/liapatiso95-ctrl/character-sheet/main/races.md";
+// ─── Species Compendium (species.md) ───────────────────────────────────────────
+const SPECIES_MD_URL="https://raw.githubusercontent.com/liapatiso95-ctrl/character-sheet/main/species.md";
 const _speciesCache={data:null,status:"idle"};
 const _speciesListeners=[];
 function _notifySpeciesListeners(){_speciesListeners.forEach(function(fn){fn();});}
@@ -4057,6 +4084,117 @@ function _parseSpeciesTraits(chunk){
   return feats.filter(function(f){return !/^(Age|Subspecies|Heritage Trait)$/i.test(f.name);});
 }
 
+// ── species/ folder (5etools-style "race" / "subrace" / "raceFluff" arrays) ──
+// Official races carry no point costs, so their traits show cost 0 ("—"). A homebrew trait can state a cost in any of three ways:
+//   {"type":"entries","name":"Ram","cost":2,"entries":[…]}      (also "points" / "pointCost")
+//   {"type":"entries","name":"Ram (2 points)","entries":[…]}    (same wording as species.md)
+//   …and the trait text ending in "(2 points)".
+function _spTraitCost(e,name,desc){
+  var n=NaN,k;
+  ["cost","points","pointCost"].forEach(function(key){if(isNaN(n)&&e[key]!=null){k=parseFloat(e[key]);if(!isNaN(k))n=k;}});
+  if(!isNaN(n)) return {name:name,desc:desc,cost:n,has:true};
+  var m=name.match(/^(.*?)\s*[.:]?\s*\(\s*(\d+)\s*points?\s*\)\s*$/i);
+  if(m) return {name:m[1].trim(),desc:desc,cost:parseInt(m[2]),has:true};
+  var t=desc.match(/\*{0,3}\(\s*(\d+)\s*points?\s*\)\*{0,3}\s*$/i);
+  if(t) return {name:name,desc:desc.replace(t[0],"").trim(),cost:parseInt(t[1]),has:true};
+  return {name:name,desc:desc,cost:0,has:false};
+}
+function _spTraits(entries){
+  var feats=[];
+  (entries||[]).forEach(function(e){
+    if(!e||typeof e!=="object"||e.type==="inset"||!e.name) return;
+    var nm=strip5eTags(e.name).replace(/[.:]$/,"").trim();
+    if(!nm||/^(Age|Alignment|Size|Subspecies|Subrace|Heritage Trait|Ability Score Increase)$/i.test(nm)) return;
+    var desc=flatten5eEntries(e.entries||e.items||"",[]).join("\n\n").trim();
+    var t=_spTraitCost(e,nm,desc);
+    feats.push({name:t.name,desc:t.desc,cost:t.cost,hasCost:t.has});
+  });
+  return feats;
+}
+var _SP_SIZE={T:"Tiny",S:"Small",M:"Medium",L:"Large",H:"Huge",G:"Gargantuan",V:"Varies"};
+var _SP_ABL={str:"Str",dex:"Dex",con:"Con",int:"Int",wis:"Wis",cha:"Cha"};
+function _spStats(r){
+  var p=[];
+  if(r.creatureTypes&&r.creatureTypes.length) p.push(r.creatureTypes.map(function(x){x=(""+(x&&x.name||x)).replace(/^./,function(c){return c.toUpperCase();});return x;}).join("/"));
+  if(r.size&&r.size.length) p.push(r.size.map(function(x){return _SP_SIZE[x]||x;}).join(" or "));
+  if(r.speed!=null){
+    if(typeof r.speed==="number") p.push("Speed "+r.speed+" ft.");
+    else{var sp=[];Object.keys(r.speed).forEach(function(k){var v=r.speed[k];if(v===true)sp.push(k);else if(typeof v==="number")sp.push((k==="walk"?"":k+" ")+v+" ft.");else if(v&&v.number)sp.push(k+" "+v.number+" ft.");});if(sp.length)p.push("Speed "+sp.join(", "));}
+  }
+  if(Array.isArray(r.ability)&&r.ability.length){
+    var a=r.ability[0],ab=[];
+    Object.keys(a).forEach(function(k){if(_SP_ABL[k]&&a[k])ab.push((a[k]>0?"+":"")+a[k]+" "+_SP_ABL[k]);else if(k==="choose"&&a.choose){var c=a.choose;var n=c.count||1;ab.push("+"+(c.amount||1)+" to "+n+" ability score"+(n>1?"s":"")+" of your choice");}});
+    if(ab.length)p.push(ab.join(", "));
+  }
+  return p.join(" · ");
+}
+function convertSpeciesJson(races,subraces,fluff){
+  var key=function(n,s){return ((n||"")+"|"+(s||"")).toLowerCase();};
+  var index={};(races||[]).forEach(function(r){if(r&&r.name)index[key(r.name,r.source)]=r;});
+  var res=(races||[]).filter(function(r){return r&&r.name;}).map(function(r){return r._copy?resolve5eCopy(r,index,0):r;});
+  var pool={};res.forEach(function(r){pool[key(r.name,r.source)]=1;});
+  // An older printing is dropped only when the newer one it points to is in the files too.
+  var supersededBy=function(r){return Array.isArray(r.reprintedAs)&&r.reprintedAs.some(function(x){var t=(typeof x==="string"?x:x&&x.name)||"";var pr=t.split("|");return pool[key(pr[0],pr[1]||"")]&&key(pr[0],pr[1]||"")!==key(r.name,r.source);});};
+  var kept=res.filter(function(r){return !supersededBy(r);});
+  var count={};kept.forEach(function(r){var n=r.name.toLowerCase();count[n]=(count[n]||0)+1;});
+  var fl={};(fluff||[]).forEach(function(f){if(f&&f.name){fl[key(f.name,f.source)]=f;if(!fl[f.name.toLowerCase()])fl[f.name.toLowerCase()]=f;}});
+  var subsBy={},subPool={};
+  (subraces||[]).forEach(function(s){if(s)subPool[key(s.name,s.source)+"|"+key(s.raceName,s.raceSource)]=s;});
+  (subraces||[]).forEach(function(s0){
+    if(!s0||!s0.raceName) return;
+    var s=s0;
+    if(s._copy){var base=null;(subraces||[]).forEach(function(x){if(x&&x.name===s._copy.name&&(!s._copy.source||x.source===s._copy.source)&&x.raceName===s.raceName)base=x;});if(base){s=Object.assign({},base,s);delete s._copy;}}
+    if(Array.isArray(s.reprintedAs)&&s.reprintedAs.length&&(subraces||[]).some(function(x){return x&&x!==s0&&s.reprintedAs.some(function(rp){var t=(typeof rp==="string"?rp:rp&&rp.name)||"";return t.split("|")[0]===x.name;})&&x.raceName===s.raceName;})) return;
+    var pk=key(s.raceName,s.raceSource);
+    if(!pool[pk]){var same=kept.filter(function(r){return r.name.toLowerCase()===s.raceName.toLowerCase();});if(same.length===1)pk=key(same[0].name,same[0].source);else return;}
+    (subsBy[pk]=subsBy[pk]||[]).push(s);
+  });
+  var out={};
+  kept.forEach(function(r){
+    var dn=count[r.name.toLowerCase()]>1&&r.source?r.name+" ("+r.source+")":r.name;
+    var groups=[];
+    var gen=_spTraits(r.entries);
+    if(gen.length) groups.push({label:"General Traits",feats:gen});
+    (subsBy[key(r.name,r.source)]||[]).forEach(function(s){
+      var f=_spTraits(s.entries);
+      if(f.length) groups.push({label:(s.name||"Base Traits")+(s.source&&s.source!==r.source?" ("+s.source+")":""),feats:f});
+    });
+    if(!groups.length) return;
+    var fd=fl[key(r.name,r.source)]||fl[r.name.toLowerCase()];
+    var lore=fd&&Array.isArray(fd.entries)?fd.entries.filter(function(x){return typeof x==="string";}).map(function(x){return strip5eTags(x).trim();})[0]||"":"";
+    var stats=_spStats(r);
+    var blurb=[stats,lore].filter(Boolean).join("\n");
+    var k=dn.toLowerCase();
+    if(!out[k]) out[k]={name:dn,key:k,blurb:blurb,groups:groups,source:r.source||""};
+  });
+  return out;
+}
+function loadSpeciesFolder(onDone){
+  var base=REPO_RAW_BASE+"species/";
+  fetch(base+"index.json")
+    .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json();})
+    .then(function(list){
+      var files=Array.isArray(list)?list:((list&&list.files)||[]);
+      if(!files.length) return null;
+      return Promise.all(files.map(function(fn){
+        var url=/^https?:\/\//.test(fn)?fn:(base+fn);
+        return fetch(url).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});
+      })).then(function(datas){
+        var races=[],subs=[],fl=[];
+        datas.forEach(function(d){
+          if(!d) return;
+          if(Array.isArray(d.race)) races=races.concat(d.race); else if(Array.isArray(d)) races=races.concat(d);
+          if(Array.isArray(d.subrace)) subs=subs.concat(d.subrace);
+          if(Array.isArray(d.raceFluff)) fl=fl.concat(d.raceFluff);
+        });
+        var conv=convertSpeciesJson(races,subs,fl);
+        Object.keys(conv).forEach(function(k){if(!_speciesCache.data[k])_speciesCache.data[k]=conv[k];});
+      });
+    })
+    .catch(function(){})
+    .finally(function(){if(onDone)onDone();});
+}
+
 function useSpeciesCompendium(){
   const [tick,setTick]=React.useState(0);
   React.useEffect(function(){
@@ -4064,14 +4202,16 @@ function useSpeciesCompendium(){
     _speciesListeners.push(onUpdate);
     if(_speciesCache.status==="idle"){
       _speciesCache.status="loading";_speciesCache.data={};
+      var pending=2;
+      function done(){pending--;if(pending<=0){_speciesCache.status=Object.keys(_speciesCache.data).length?"ready":"error";}_notifySpeciesListeners();}
       fetch(SPECIES_MD_URL)
         .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.text();})
         .then(function(text){
-          var md=parseSpeciesMd(text);_speciesCache.data=md;
-          _speciesCache.status=Object.keys(md).length?"ready":"error";
+          var md=parseSpeciesMd(text);Object.keys(md).forEach(function(k){_speciesCache.data[k]=md[k];});
         })
-        .catch(function(){_speciesCache.status="error";})
-        .finally(function(){_notifySpeciesListeners();});
+        .catch(function(){})
+        .finally(function(){done();});
+      loadSpeciesFolder(done);
     }
     return function(){var i=_speciesListeners.indexOf(onUpdate);if(i>=0)_speciesListeners.splice(i,1);};
   },[]);
@@ -4158,7 +4298,7 @@ function SpeciesListPanel(){
       <div style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.4)",marginBottom:8}}>{shown.length} species</div>
       {shown.length>0&&<EcRail onExpand={function(){var o={};shown.forEach(function(sp){o[sp.key]=true;});setOpen(o);}} onCollapse={function(){var o={};shown.forEach(function(sp){o[sp.key]=false;});setOpen(o);}} />}
       {shown.length===0&&<div style={{padding:"20px",textAlign:"center",fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.3)"}}>
-        {cache.status==="loading"?"Loading species…":cache.status==="error"?"Species file unavailable — add races.md to the repo.":"No matches."}
+        {cache.status==="loading"?"Loading species…":cache.status==="error"?"Species file unavailable — add species.md to the repo.":"No matches."}
       </div>}
       {shown.map(function(sp){
         var isOpen=open[sp.key]!==undefined?!!open[sp.key]:(sp._filtered||(nq.length>2&&sp.groups.length<4));
@@ -4170,7 +4310,7 @@ function SpeciesListPanel(){
               <span style={{fontFamily:"'Cinzel',serif",fontSize:13,color:"rgba(201,150,42,.7)"}}>{isOpen?"▾":"▸"}</span>
             </div>
             {isOpen&&<div style={{marginTop:8}}>
-              {sp.blurb&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.5)",lineHeight:1.5,marginBottom:10}}>{sp.blurb}</div>}
+              {sp.blurb&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.5)",lineHeight:1.5,marginBottom:10,whiteSpace:"pre-line"}}>{sp.blurb}</div>}
               {sp.groups.map(function(g){
                 var gTotal=g.feats.reduce(function(a,f){return a+f.cost;},0);
                 return (
@@ -6688,7 +6828,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.18.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.19.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
