@@ -4104,29 +4104,65 @@ function _spTraits(entries){
   (entries||[]).forEach(function(e){
     if(!e||typeof e!=="object"||e.type==="inset"||!e.name) return;
     var nm=strip5eTags(e.name).replace(/[.:]$/,"").trim();
-    if(!nm||/^(Age|Alignment|Size|Subspecies|Subrace|Heritage Trait|Ability Score Increase)$/i.test(nm)) return;
+    if(!nm) return;
     var desc=flatten5eEntries(e.entries||e.items||"",[]).join("\n\n").trim();
     var t=_spTraitCost(e,nm,desc);
+    // Lore-only entries are skipped, unless they state a cost (e.g. a costed "Size" or "Creature Type").
+    if(!t.has&&/^(Age|Alignment|Size|Subspecies|Subrace|Heritage Trait|Ability Score Increase)$/i.test(nm)) return;
     feats.push({name:t.name,desc:t.desc,cost:t.cost,hasCost:t.has});
   });
   return feats;
 }
-var _SP_SIZE={T:"Tiny",S:"Small",M:"Medium",L:"Large",H:"Huge",G:"Gargantuan",V:"Varies"};
-var _SP_ABL={str:"Str",dex:"Dex",con:"Con",int:"Int",wis:"Wis",cha:"Cha"};
-function _spStats(r){
-  var p=[];
-  if(r.creatureTypes&&r.creatureTypes.length) p.push(r.creatureTypes.map(function(x){x=(""+(x&&x.name||x)).replace(/^./,function(c){return c.toUpperCase();});return x;}).join("/"));
-  if(r.size&&r.size.length) p.push(r.size.map(function(x){return _SP_SIZE[x]||x;}).join(" or "));
-  if(r.speed!=null){
-    if(typeof r.speed==="number") p.push("Speed "+r.speed+" ft.");
-    else{var sp=[];Object.keys(r.speed).forEach(function(k){var v=r.speed[k];if(v===true)sp.push(k);else if(typeof v==="number")sp.push((k==="walk"?"":k+" ")+v+" ft.");else if(v&&v.number)sp.push(k+" "+v.number+" ft.");});if(sp.length)p.push("Speed "+sp.join(", "));}
-  }
-  if(Array.isArray(r.ability)&&r.ability.length){
-    var a=r.ability[0],ab=[];
-    Object.keys(a).forEach(function(k){if(_SP_ABL[k]&&a[k])ab.push((a[k]>0?"+":"")+a[k]+" "+_SP_ABL[k]);else if(k==="choose"&&a.choose){var c=a.choose;var n=c.count||1;ab.push("+"+(c.amount||1)+" to "+n+" ability score"+(n>1?"s":"")+" of your choice");}});
-    if(ab.length)p.push(ab.join(", "));
-  }
-  return p.join(" · ");
+// Species data that 5etools keeps in the header (ability bonuses, creature type, size, speed) becomes choosable traits, first in General Traits.
+// A cost can be stated on the race as "abilityCost", "creatureTypeCost", "sizeCost" or "speedCost"; without one the trait shows no points.
+var _SP_ABLN={str:"Strength",dex:"Dexterity",con:"Constitution",int:"Intelligence",wis:"Wisdom",cha:"Charisma"};
+var _SP_SZN={T:"Tiny",S:"Small",M:"Medium",L:"Large",H:"Huge",G:"Gargantuan",V:"Varies"};
+function _spAbilityText(r){
+  if(!Array.isArray(r.ability)||!r.ability.length) return "";
+  var opts=r.ability.map(function(a){
+    var p=[];
+    Object.keys(a||{}).forEach(function(k){
+      if(_SP_ABLN[k]&&a[k]) p.push((a[k]>0?"+":"")+a[k]+" "+_SP_ABLN[k]);
+      else if(k==="choose"&&a.choose){
+        var c=a.choose,n=c.count||1,amt=c.amount||1,from=(c.from||[]).map(function(x){return _SP_ABLN[x]||x;});
+        p.push("+"+amt+" to "+(n>1?n+" different ability scores":"one ability score")+(from.length&&from.length<6?" from "+from.join(", "):" of your choice"));
+      }
+    });
+    return p.join(", ");
+  }).filter(Boolean);
+  if(!opts.length) return "";
+  return opts.length===1?opts[0]:"Choose one:\n"+opts.map(function(o){return "- "+o;}).join("\n");
+}
+function _spSizeText(r){
+  var a=(r.size||[]).map(function(x){return _SP_SZN[x]||x;});
+  if(!a.length) return "";
+  return a.length===1?a[0]:a.slice(0,-1).join(", ")+" or "+a[a.length-1];
+}
+function _spTypeText(r){
+  var a=(r.creatureTypes||[]).map(function(x){x=""+(x&&x.type||x&&x.name||x);return x.replace(/^./,function(c){return c.toUpperCase();});});
+  return a.join(" or ");
+}
+function _spSpeedText(r){
+  var sp=r.speed;
+  if(sp==null) return "";
+  if(typeof sp==="number") return "Your walking speed is "+sp+" feet.";
+  var walk=typeof sp.walk==="number"?sp.walk:null,out=[];
+  if(walk!=null) out.push("Your walking speed is "+walk+" feet.");
+  var nm={fly:"flying",swim:"swimming",climb:"climbing",burrow:"burrowing"};
+  Object.keys(nm).forEach(function(k){
+    var v=sp[k];if(v==null||v===false) return;
+    var n=(v&&typeof v==="object")?v.number:v;
+    var hover=(k==="fly"&&sp.canHover)?" (you can hover)":"";
+    if(v===true||n===true) out.push("You have a "+nm[k]+" speed equal to your walking speed"+hover+".");
+    else if(typeof n==="number") out.push("You have a "+nm[k]+" speed of "+n+" feet"+hover+".");
+  });
+  return out.join(" ");
+}
+function _spHeaderTraits(r){
+  var cost=function(k){var v=parseFloat(r[k]);return isNaN(v)?{cost:0,hasCost:false}:{cost:v,hasCost:true};};
+  var rows=[["Ability Score Increase",_spAbilityText(r),"abilityCost"],["Creature Type",_spTypeText(r),"creatureTypeCost"],["Size",_spSizeText(r),"sizeCost"],["Speed",_spSpeedText(r),"speedCost"]],out=[];
+  rows.forEach(function(h){if(h[1]){var c=cost(h[2]);out.push({name:h[0],desc:h[1],cost:c.cost,hasCost:c.hasCost});}});
+  return out;
 }
 function convertSpeciesJson(races,subraces,fluff){
   var key=function(n,s){return ((n||"")+"|"+(s||"")).toLowerCase();};
@@ -4154,6 +4190,8 @@ function convertSpeciesJson(races,subraces,fluff){
     var dn=count[r.name.toLowerCase()]>1&&r.source?r.name+" ("+r.source+")":r.name;
     var groups=[];
     var gen=_spTraits(r.entries);
+    var hdr=_spHeaderTraits(r).filter(function(h){return !gen.some(function(x){return x.name.toLowerCase()===h.name.toLowerCase();});});
+    gen=hdr.concat(gen);
     if(gen.length) groups.push({label:"General Traits",feats:gen});
     (subsBy[key(r.name,r.source)]||[]).forEach(function(s){
       var f=_spTraits(s.entries);
@@ -4162,10 +4200,9 @@ function convertSpeciesJson(races,subraces,fluff){
     if(!groups.length) return;
     var fd=fl[key(r.name,r.source)]||fl[r.name.toLowerCase()];
     var lore=fd&&Array.isArray(fd.entries)?flatten5eEntries(fd.entries,[]).join("\n\n").trim():"";
-    var stats=_spStats(r);
-    var blurb=[stats?"*"+stats+"*":"",lore].filter(Boolean).join("\n\n");
+    var blurb=lore;
     var k=dn.toLowerCase();
-    if(!out[k]) out[k]={name:dn,key:k,blurb:blurb,stats:stats,lore:lore,groups:groups,source:r.source||""};
+    if(!out[k]) out[k]={name:dn,key:k,blurb:blurb,stats:"",lore:lore,groups:groups,source:r.source||""};
   });
   return out;
 }
@@ -6838,7 +6875,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.19.3</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.20.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
