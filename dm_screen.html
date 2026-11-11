@@ -4023,7 +4023,7 @@ function parseSpeciesMd(text){
       if(pi===0){
         // flavor text = everything before the first #### heading / first trait
         var cut=chunk.search(/^#### |^\*\*[^*\n]+?\.[^\n]*?\*\*/m);
-        blurb=_cleanSpeciesText(cut<0?chunk:chunk.slice(0,cut)).split(/\n\s*\n/)[0]||"";
+        blurb=_cleanSpeciesText(cut<0?chunk:chunk.slice(0,cut)).trim();
       }
       if(feats.length) groups.push({label:label,feats:feats});
     });
@@ -4039,7 +4039,7 @@ function parseSpeciesMd(text){
       }
       delete f._ref;delete f._refAdd;delete f._own;
     });
-    out[name.toLowerCase()]={name:name,key:name.toLowerCase(),blurb:blurb,groups:groups};
+    out[name.toLowerCase()]={name:name,key:name.toLowerCase(),blurb:blurb,stats:"",lore:blurb,groups:groups};
   });
   return out;
 }
@@ -4161,11 +4161,11 @@ function convertSpeciesJson(races,subraces,fluff){
     });
     if(!groups.length) return;
     var fd=fl[key(r.name,r.source)]||fl[r.name.toLowerCase()];
-    var lore=fd&&Array.isArray(fd.entries)?fd.entries.filter(function(x){return typeof x==="string";}).map(function(x){return strip5eTags(x).trim();})[0]||"":"";
+    var lore=fd&&Array.isArray(fd.entries)?flatten5eEntries(fd.entries,[]).join("\n\n").trim():"";
     var stats=_spStats(r);
-    var blurb=[stats,lore].filter(Boolean).join("\n");
+    var blurb=[stats?"*"+stats+"*":"",lore].filter(Boolean).join("\n\n");
     var k=dn.toLowerCase();
-    if(!out[k]) out[k]={name:dn,key:k,blurb:blurb,groups:groups,source:r.source||""};
+    if(!out[k]) out[k]={name:dn,key:k,blurb:blurb,stats:stats,lore:lore,groups:groups,source:r.source||""};
   });
   return out;
 }
@@ -4288,6 +4288,7 @@ function SpeciesListPanel(){
   const cache=useSpeciesCompendium();
   const [fl,setFl]=React.useState(SPECIES_FILTER_EMPTY);
   const [open,setOpen]=React.useState({});
+  const [loreOpen,setLoreOpen]=React.useState({});
   const inputStyle={background:"rgba(0,0,0,.35)",border:"1px solid rgba(201,150,42,.25)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:14,padding:"6px 10px",outline:"none",borderRadius:2};
   const list=(cache.status==="ready"&&cache.data)?Object.values(cache.data):[];
   const nq=fl.name.trim();
@@ -4310,7 +4311,16 @@ function SpeciesListPanel(){
               <span style={{fontFamily:"'Cinzel',serif",fontSize:13,color:"rgba(201,150,42,.7)"}}>{isOpen?"▾":"▸"}</span>
             </div>
             {isOpen&&<div style={{marginTop:8}}>
-              {sp.blurb&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.5)",lineHeight:1.5,marginBottom:10,whiteSpace:"pre-line"}}>{sp.blurb}</div>}
+              {sp.stats&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.5)",lineHeight:1.5,marginBottom:6}}>{sp.stats}</div>}
+                {sp.lore&&(function(){
+                  var parts=sp.lore.split(/\n\s*\n/),first=parts[0],rest=parts.slice(1).join("\n\n").trim(),lo=!!loreOpen[sp.key];
+                  var ls={fontFamily:"'EB Garamond',serif",fontSize:13.5,color:"rgba(232,213,176,.6)",lineHeight:1.5};
+                  return <div style={{marginBottom:10}}>
+                    <div style={ls}><Markdown text={first} /></div>
+                    {rest&&lo&&<div style={Object.assign({marginTop:4},ls)}><Markdown text={rest} /></div>}
+                    {rest&&<div onClick={function(){var o=Object.assign({},loreOpen);o[sp.key]=!lo;setLoreOpen(o);}} style={{cursor:"pointer",display:"inline-block",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1.5,textTransform:"uppercase",color:"var(--gold)",padding:"4px 0"}}>{lo?"▴ Less lore":"▾ More lore"}</div>}
+                  </div>;
+                })()}
               {sp.groups.map(function(g){
                 var gTotal=g.feats.reduce(function(a,f){return a+f.cost;},0);
                 return (
@@ -6828,7 +6838,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.19.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.19.3</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
