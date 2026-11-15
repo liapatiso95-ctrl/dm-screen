@@ -4044,7 +4044,7 @@ function parseSpeciesMd(text){
   return out;
 }
 function _cleanSpeciesText(t){
-  return (t||"").replace(/^\\(page|column|columnbreak)\s*$/gm,"").replace(/^\{\{pageNumber[^}]*\}\}\s*$/gm,"")
+  return (t||"").replace(/\\(?:pagebreak|page|columnbreak|column)\b[ \t]*/gi,"").replace(/^\{\{pageNumber[^}]*\}\}\s*$/gm,"")
     .replace(/^#### .*$/gm,"").replace(/^\s*<!--[\s\S]*?-->\s*$/gm,"").replace(/[ \t]+$/gm,"").replace(/\n{3,}/g,"\n\n").trim();
 }
 function _parseSpeciesTraits(chunk){
@@ -5664,7 +5664,52 @@ function rollExpression(expr){
   }
   return {total:total, detail:parts.join("")};
 }
-function RollerPanel({c,pos,setPos,onClose,onRoll}){
+// Roll one entry of the sheet's published quick-roll list ({n:label, r:[{t:type,d:[{s,x,n}|{f}],m:notes}], b:bonus})
+function qrRoll(it){
+  var total=it.b||0,pieces=[],bonusN=it.b||0,notes=[];
+  (it.r||[]).forEach(function(g){
+    var by={},ord=[];
+    (g.d||[]).forEach(function(d){
+      if(d.f!=null){bonusN+=d.f;total+=d.f;return;}
+      var v=rollN(d.s);if(d.n)v=-v;total+=v;
+      var k="d"+d.s;if(!by[k]){by[k]=[];ord.push(k);}by[k].push(v);
+    });
+    var txt=ord.map(function(k){return by[k].length>1?by[k].length+k+"("+by[k].join(",")+")":k+"("+by[k][0]+")";}).join(" + ");
+    if(txt)pieces.push(txt+(g.t?" "+g.t:""));
+    (g.m||[]).forEach(function(x){if(notes.indexOf(x)<0)notes.push(x);});
+  });
+  var det=pieces.join(" + ")+(bonusN>0?" + "+bonusN:bonusN<0?" − "+Math.abs(bonusN):"");
+  if(notes.length)det+="  ("+notes.join(", ")+")";
+  return {detail:det,total:total};
+}
+function QuickRollList({c,onQr}){
+  const list=c.sheet.__qr;
+  const [open,setOpen]=useState({});
+  var heads=[],map={};
+  list.forEach(function(it){if(!map[it.h]){map[it.h]=[];heads.push(it.h);}map[it.h].push(it);});
+  return <div>
+    {heads.map(function(h){
+      var isOpen=!!open[h],items=map[h],lastG=null,lastL=null;
+      return <div key={h} style={{marginBottom:6}}>
+        <div onClick={function(){var n=Object.assign({},open);n[h]=!isOpen;setOpen(n);}} style={{cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",gap:6,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",color:"rgba(184,154,240,.8)",borderBottom:"1px solid rgba(123,79,207,.25)",padding:"3px 0"}}>
+          <span style={{display:"inline-block",width:5,height:5,borderRight:"2px solid currentColor",borderBottom:"2px solid currentColor",transform:isOpen?"rotate(45deg) translate(-1px,-1px)":"rotate(-45deg)"}}/>{h}<span style={{opacity:.5}}>{items.length}</span>
+        </div>
+        {isOpen&&<div style={{display:"flex",flexWrap:"wrap",gap:5,paddingTop:5}}>
+          {items.map(function(it,i){
+            var out=[];
+            if(it.g&&it.g!==lastG){lastG=it.g;lastL=null;out.push(<div key={"g"+i} style={{flexBasis:"100%",fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",color:ARCL,marginTop:4}}>{it.g}</div>);}
+            if(it.l&&it.l!==lastL){lastL=it.l;out.push(<div key={"l"+i} style={{flexBasis:"100%",fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,textTransform:"uppercase",color:"rgba(232,213,176,.55)",marginTop:2}}>{it.l}</div>);}
+            out.push(<div key={i} onClick={function(){onQr(c.name,it,c.id);}} style={{cursor:"pointer",fontFamily:"'EB Garamond',serif",fontSize:12,color:PARCH,border:"1px solid rgba(201,150,42,.3)",background:"rgba(201,150,42,.08)",borderRadius:4,padding:"3px 8px"}}>{it.n}</div>);
+            return out;
+          })}
+        </div>}
+      </div>;
+    })}
+  </div>;
+}
+function RollerPanel({c,pos,setPos,onClose,onRoll,onQr}){
+  const hasQr=!!(c.sheet&&Array.isArray(c.sheet.__qr)&&c.sheet.__qr.length&&onQr);
+  const [basic,setBasic]=useState(false);
   const drag=useRef(null);
   function start(e){var ev=e.touches?e.touches[0]:e;drag.current={dx:ev.clientX-pos.x,dy:ev.clientY-pos.y};window.addEventListener("mousemove",move);window.addEventListener("mouseup",end);window.addEventListener("touchmove",move,{passive:false});window.addEventListener("touchend",end);}
   function move(e){if(!drag.current)return;var ev=e.touches?e.touches[0]:e;setPos({x:ev.clientX-drag.current.dx,y:ev.clientY-drag.current.dy});if(e.touches&&e.cancelable)e.preventDefault();}
@@ -5673,10 +5718,12 @@ function RollerPanel({c,pos,setPos,onClose,onRoll}){
   return <div style={{position:"fixed",left:pos.x,top:pos.y,zIndex:100000,width:300,maxWidth:"92vw",maxHeight:"80vh",overflow:"auto",background:"#1c1510",border:"1px solid rgba(123,79,207,.5)",borderRadius:6,boxShadow:"0 8px 30px rgba(0,0,0,.6)"}}>
     <div onMouseDown={start} onTouchStart={start} style={{cursor:"move",display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"rgba(123,79,207,.18)",borderBottom:"1px solid rgba(123,79,207,.3)",userSelect:"none"}}>
       <span style={{flex:1,fontFamily:"'Cinzel',serif",fontSize:13,color:ARCL}}>🎲 {c.name}</span>
+      {hasQr&&<span onMouseDown={function(e){e.stopPropagation();}} onTouchStart={function(e){e.stopPropagation();}} onClick={function(){setBasic(!basic);}} title="Switch between the character's quick roll list and the basic list" style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,textTransform:"uppercase",color:"rgba(232,213,176,.6)",border:"1px solid rgba(232,213,176,.25)",borderRadius:8,padding:"1px 7px"}}>{basic?"Quick roll":"Basic"}</span>}
       <span onClick={onClose} style={{cursor:"pointer",color:"rgba(232,213,176,.5)",fontSize:15}}>✕</span>
     </div>
     <div style={{padding:"8px 12px 12px"}}>
-      {groups.map(function(grp,gi){return <div key={gi} style={{marginBottom:10}}>
+      {hasQr&&!basic&&<QuickRollList c={c} onQr={onQr}/>}
+      {(!hasQr||basic)&&groups.map(function(grp,gi){return <div key={gi} style={{marginBottom:10}}>
         <div style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,textTransform:"uppercase",color:"rgba(184,154,240,.55)",marginBottom:5}}>{grp.g}</div>
         <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
           {grp.items.map(function(it,ii){return <div key={ii} onClick={function(){onRoll(c.name,it,c.id);}} style={{cursor:"pointer",fontFamily:"'EB Garamond',serif",fontSize:12,color:PARCH,border:"1px solid rgba(201,150,42,.3)",background:"rgba(201,150,42,.08)",borderRadius:3,padding:"3px 8px"}}>{it.label}<span style={{color:"rgba(232,213,176,.4)",marginLeft:4}}>{it.type==="dice"?(it.n+"d"+it.sides+(it.bonus?fmtMod(it.bonus):"")):it.type==="expr"?it.expr:fmtMod(it.mod||0)}</span></div>;})}
@@ -5710,6 +5757,7 @@ function CombatTracker({combat,setCombat,setLightbox,onAddCreature}){
   },[]);
   const rollCustom=function(){var r=rollExpression(customExpr);if(!r){setCustomErr(true);return;}setCustomErr(false);pushRoll({id:uid(),name:"Custom",label:customExpr.trim(),detail:r.detail,total:r.total});};
   const doRoll=function(name,it,id){var r=rollItem(it);pushRoll({id:uid(),name:name,label:it.label,detail:r.detail,total:r.total});if(it.isInit&&id)upd(id,{init:r.total});};
+  const doQr=function(name,it,id){var r=qrRoll(it);pushRoll({id:uid(),name:name,label:it.n,detail:r.detail,total:r.total});if(it.n==="Initiative"&&id)upd(id,{init:r.total});};
   const openRoller=function(id){setRoller(function(p){return {id:id,x:p?p.x:Math.max(8,Math.round(window.innerWidth/2)-150),y:p?p.y:90};});};
   const setRollerPos=function(pos){setRoller(function(p){return p?Object.assign({},p,{x:pos.x,y:pos.y}):p;});};
   const upd=function(id,patch){setCombat(function(p){return Object.assign({},p,{combatants:(p.combatants||[]).map(function(c){return c.id===id?Object.assign({},c,typeof patch==="function"?patch(c):patch):c;})});});};
@@ -5795,7 +5843,7 @@ function CombatTracker({combat,setCombat,setLightbox,onAddCreature}){
         </div>;})}
       </div>
     </div>}
-    {roller&&(function(){var rc=(combat.combatants||[]).find(function(x){return x.id===roller.id;});return rc?<RollerPanel c={rc} pos={{x:roller.x,y:roller.y}} setPos={setRollerPos} onClose={function(){setRoller(null);}} onRoll={doRoll}/>:null;})()}
+    {roller&&(function(){var rc=(combat.combatants||[]).find(function(x){return x.id===roller.id;});return rc?<RollerPanel c={rc} pos={{x:roller.x,y:roller.y}} setPos={setRollerPos} onClose={function(){setRoller(null);}} onRoll={doRoll} onQr={doQr}/>:null;})()}
     {flash&&<div style={{position:"fixed",top:64,left:"50%",transform:"translateX(-50%)",zIndex:100002,pointerEvents:"none",maxWidth:"92vw"}}>
       <div key={flash.id} style={{animation:"dmPop .2s ease-out",display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderRadius:8,background:"rgba(28,21,16,.97)",border:"1px solid rgba(201,150,42,.55)",boxShadow:"0 8px 30px rgba(0,0,0,.6)"}}>
         {flash.total!=null&&<span style={{fontFamily:"'Cinzel Decorative',cursive",fontSize:30,color:GOLDL,lineHeight:1}}>{flash.total}</span>}
@@ -6875,7 +6923,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.20.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.21.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
