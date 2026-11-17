@@ -4191,6 +4191,7 @@ function GlossaryPanel(){
   const [q,setQ]=React.useState("");
   const [dq,setDq]=React.useState("");
   const [cat,setCat]=React.useState("all");
+  const [typ,setTyp]=React.useState("all");
   const [open,setOpen]=React.useState({});
   React.useEffect(function(){
     var fn=function(){tick(function(n){return n+1;});};
@@ -4198,13 +4199,20 @@ function GlossaryPanel(){
     return function(){var i=_glossListeners.indexOf(fn);if(i>=0)_glossListeners.splice(i,1);};
   },[]);
   var st=_glossCache.status,es=_glossCache.entries||[];
-  var catOf=function(e){return e.tag||"Other";};
+  // display-only grouping: the sub-tables (properties, mastery, armor rules, don/doff, language notes) show under their main category; stored Tag values are untouched
+  var CATMAP={"weapon property":"Weapon","weapon mastery":"Weapon","armor rule":"Armor","donning and doffing":"Armor","language note":"Language"};
+  var catOf=function(e){return CATMAP[(e.tag||"").toLowerCase()]||e.tag||"Other";};
+  var typeOf=function(e){return e.f.type||e.f.group||(CATMAP[(e.tag||"").toLowerCase()]?e.tag:"")||"Other";};
+  var types=[];es.forEach(function(e){if(cat!=="all"&&catOf(e)!==cat)return;var t=typeOf(e);if(types.indexOf(t)<0)types.push(t);});
+  types.sort(function(a,b){return a==="Other"?1:b==="Other"?-1:a.localeCompare(b);});
+  var typV=types.indexOf(typ)>=0?typ:"all";
   var cats=[];es.forEach(function(e){var c=catOf(e);if(cats.indexOf(c)<0)cats.push(c);});
   var ql=q.trim().toLowerCase(),dl=dq.trim().toLowerCase();
   var fieldLine=_glossFieldLine;
   var list=es.map(function(e,i){return {e:e,i:i};}).filter(function(x){
     var e=x.e;
     if(cat!=="all"&&catOf(e)!==cat)return false;
+    if(typV!=="all"&&typeOf(e)!==typV)return false;
     if(ql&&e.name.toLowerCase().indexOf(ql)<0)return false;
     if(dl&&(e.text+" "+fieldLine(e).join(" ")).toLowerCase().indexOf(dl)<0)return false;
     return true;
@@ -4217,10 +4225,14 @@ function GlossaryPanel(){
     <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
       <input value={q} onChange={function(e){setQ(e.target.value);}} placeholder="Name contains..." style={Object.assign({},inp,{flex:"1 1 160px",minWidth:140})} />
       <input value={dq} onChange={function(e){setDq(e.target.value);}} placeholder="Text contains..." style={Object.assign({},inp,{flex:"1 1 160px",minWidth:140})} />
-      <select value={cat} onChange={function(e){setCat(e.target.value);}} style={Object.assign({},inp,{flex:"0 1 190px"})}>
+      <select value={cat} onChange={function(e){setCat(e.target.value);setTyp("all");}} style={Object.assign({},inp,{flex:"0 1 190px"})}>
         <option value="all">All categories</option>
         {cats.map(function(c){return <option key={c} value={c}>{c}</option>;})}
       </select>
+      {types.length>1&&<select value={typV} onChange={function(e){setTyp(e.target.value);}} style={Object.assign({},inp,{flex:"0 1 190px"})}>
+        <option value="all">All types</option>
+        {types.map(function(t){return <option key={t} value={t}>{t}</option>;})}
+      </select>}
     </div>
     {st!=="ready"&&<div style={{padding:"20px",textAlign:"center",fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.4)"}}>{st==="error"?"Glossary unavailable — check glossary.md in repo (or you are offline).":"Loading glossary…"}</div>}
     {st==="ready"&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:12,fontStyle:"italic",color:"rgba(232,213,176,.4)",marginBottom:6}}>{list.length+" entr"+(list.length===1?"y":"ies")}</div>}
@@ -7221,7 +7233,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.26.1</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.27.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
