@@ -4185,40 +4185,54 @@ function _glossMount(){
     window.__glossHost=ReactDOM.createRoot(d);window.__glossHost.render(<GlossPopHost />);
   }catch(e){}
 }
-// Per-page selector + page buttons for the Glossary and Species compendium lists (size is remembered for the session only)
+// Per-page row and page buttons for the Glossary and Species lists: same look and place as the other compendium lists (size is remembered for the session only)
 var _pgMem={};
 function useCompPageSize(key){var r=React.useState(_pgMem[key]||20);return [r[0],function(v){_pgMem[key]=v;r[1](v);}];}
-function CompPerPage({size,setSize}){
-  return <label style={{display:"flex",alignItems:"center",gap:5,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.5)",textTransform:"uppercase",flex:"0 0 auto"}}>
-    Per page
-    <select value={""+size} onChange={function(e){setSize(parseInt(e.target.value));}} style={{background:"rgba(0,0,0,.35)",border:"1px solid rgba(201,150,42,.3)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:11,padding:"2px 6px",borderRadius:2,outline:"none"}}>
-      {[10,20,50,100,200,500].map(function(n){return <option key={n} value={""+n}>{n}</option>;})}
-    </select>
-  </label>;
+function CompToolbar({size,setSize,total,page}){
+  var pages=Math.max(1,Math.ceil(total/size));
+  var inSt={background:"rgba(0,0,0,.3)",border:"1px solid rgba(201,150,42,.2)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:11,outline:"none",padding:"2px 6px",borderRadius:2,cursor:"pointer"};
+  return <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+    <label style={{display:"flex",alignItems:"center",gap:5,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.5)",textTransform:"uppercase"}}>
+      Per page
+      <select value={""+size} onChange={function(e){setSize(parseInt(e.target.value));}} style={inSt}>
+        {[10,20,50,100,200,500].map(function(n){return <option key={n} value={""+n}>{n}</option>;})}
+      </select>
+    </label>
+    <span style={{marginLeft:"auto",fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.35)"}}>{total} result{total===1?"":"s"}{pages>1?" \u00b7 showing "+(page*size+1)+"\u2013"+Math.min(page*size+size,total):""}</span>
+  </div>;
 }
 function CompPageNav({total,size,page,setPage}){
-  var pages=Math.max(1,Math.ceil(total/size));
-  if(pages<2)return null;
-  var nums=[];var add=function(p){if(nums.indexOf(p)<0&&p>=0&&p<pages)nums.push(p);};
-  add(0);add(page-1);add(page);add(page+1);add(pages-1);
+  var totalPages=Math.max(1,Math.ceil(total/size)),curPage=page;
+  if(totalPages<2)return null;
+  var nums=[];var add=function(p){if(nums.indexOf(p)<0&&p>=0&&p<totalPages)nums.push(p);};
+  add(0);add(1);add(curPage-1);add(curPage);add(curPage+1);add(totalPages-2);add(totalPages-1);
   nums.sort(function(a,b){return a-b;});
   var seq=[];for(var i=0;i<nums.length;i++){if(i>0&&nums[i]-nums[i-1]>1)seq.push(-1);seq.push(nums[i]);}
-  var go=function(v){v=parseInt(v);if(!isNaN(v))setPage(Math.max(0,Math.min(pages-1,v-1)));};
-  var btn=function(active,disabled,onClick,label,key){
-    return <div key={key} onClick={disabled?null:onClick} style={{cursor:disabled?"default":"pointer",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1,textAlign:"center",padding:"4px 8px",borderRadius:2,userSelect:"none",border:"1px solid "+(active?"rgba(201,150,42,.6)":"rgba(201,150,42,.2)"),color:active?"#1a1410":"var(--gold-l)",background:active?"var(--gold)":"transparent",opacity:disabled?.4:1}}>{label}</div>;
+  var pgBtn=function(active,disabled,onClick,label,key){
+    return (<div key={key} onClick={disabled?null:onClick}
+      style={{cursor:disabled?"default":"pointer",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1,textTransform:"uppercase",minWidth:active?28:undefined,textAlign:"center",padding:"4px 9px",borderRadius:2,userSelect:"none",
+        border:"1px solid "+(active?"rgba(201,150,42,.6)":"rgba(201,150,42,.2)"),
+        color:active?"#1a1410":(disabled?"rgba(232,213,176,.2)":"var(--gold-l)"),
+        background:active?"var(--gold)":"transparent",opacity:disabled?.4:1}}>{label}</div>);
   };
-  return <div style={{marginTop:14,display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"nowrap"}}>
-      {btn(false,page===0,function(){setPage(page-1);},"\u2039","prev")}
-      {seq.map(function(p,i){return p===-1?<span key={"g"+i} style={{fontFamily:"'Cinzel',serif",fontSize:10,color:"rgba(232,213,176,.3)"}}>{"\u2026"}</span>:btn(p===page,false,function(){setPage(p);},""+(p+1),"p"+p);})}
-      {btn(false,page>=pages-1,function(){setPage(page+1);},"\u203a","next")}
-    </div>
-    <span style={{display:"flex",alignItems:"center",gap:5,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.4)",textTransform:"uppercase"}}>
+  return (
+  <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:14,flexWrap:"wrap"}}>
+    {pgBtn(false,curPage===0,function(){setPage(curPage-1);},"\u2039","prev")}
+    {seq.map(function(p,i){
+      if(p===-1) return <span key={"gap"+i} style={{fontFamily:"'Cinzel',serif",fontSize:10,color:"rgba(232,213,176,.3)",padding:"0 2px"}}>{"\u2026"}</span>;
+      return pgBtn(p===curPage,false,function(){setPage(p);},""+(p+1),"p"+p);
+    })}
+    {pgBtn(false,curPage>=totalPages-1,function(){setPage(curPage+1);},"\u203a","next")}
+    <span style={{display:"flex",alignItems:"center",gap:5,marginLeft:8,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.4)",textTransform:"uppercase"}}>
       Go to
-      <input type="number" min={1} max={pages} defaultValue={page+1} key={"j"+page+"_"+pages} onKeyDown={function(e){if(e.key==="Enter")go(e.target.value);}} onBlur={function(e){go(e.target.value);}} style={{width:52,background:"rgba(0,0,0,.3)",border:"1px solid rgba(201,150,42,.25)",borderRadius:2,color:"var(--gold-l)",fontFamily:"'Cinzel',serif",fontSize:11,textAlign:"center",padding:"3px 4px",outline:"none"}} />
-      {"/ "+pages}
+      <input type="number" min={1} max={totalPages} defaultValue={curPage+1} key={"jump"+curPage+"_"+totalPages}
+        onKeyDown={function(e){if(e.key==="Enter"){var v=parseInt(e.target.value);if(!isNaN(v))setPage(Math.max(0,Math.min(totalPages-1,v-1)));}}}
+        onBlur={function(e){var v=parseInt(e.target.value);if(!isNaN(v))setPage(Math.max(0,Math.min(totalPages-1,v-1)));}}
+        style={{width:52,background:"rgba(0,0,0,.3)",border:"1px solid rgba(201,150,42,.25)",borderRadius:2,color:"var(--gold-l)",fontFamily:"'Cinzel',serif",fontSize:11,textAlign:"center",padding:"3px 4px",outline:"none"}} />
+      / {totalPages}
     </span>
-  </div>;
+  </div>
+  );
 }
 // Compendium → Glossary tab: every glossary.md entry, searchable, with a category filter.
 function GlossaryPanel(){
@@ -4275,10 +4289,7 @@ function GlossaryPanel(){
       </select>}
     </div>
     {st!=="ready"&&<div style={{padding:"20px",textAlign:"center",fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.4)"}}>{st==="error"?"Glossary unavailable — check glossary.md in repo (or you are offline).":"Loading glossary…"}</div>}
-    {st==="ready"&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap",marginBottom:6}}>
-      <span style={{fontFamily:"'EB Garamond',serif",fontSize:12,fontStyle:"italic",color:"rgba(232,213,176,.4)"}}>{list.length+" entr"+(list.length===1?"y":"ies")+(list.length>pgSize?" \u00b7 showing "+(curPg*pgSize+1)+"\u2013"+Math.min(curPg*pgSize+pgSize,list.length):"")}</span>
-      <CompPerPage size={pgSize} setSize={setPgSize} />
-    </div>}
+    {st==="ready"&&<CompToolbar size={pgSize} setSize={setPgSize} total={list.length} page={curPg} />}
     {st==="ready"&&pageList.map(function(x){
       var e=x.e,isOpen=!!open[x.i],fl=fieldLine(e),sub=e.f.type||e.f.group||"";
       return <div key={x.i} style={{borderBottom:"1px solid rgba(201,150,42,.14)"}}>
@@ -7277,7 +7288,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.28.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.28.1</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
