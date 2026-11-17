@@ -4185,6 +4185,41 @@ function _glossMount(){
     window.__glossHost=ReactDOM.createRoot(d);window.__glossHost.render(<GlossPopHost />);
   }catch(e){}
 }
+// Per-page selector + page buttons for the Glossary and Species compendium lists (size is remembered for the session only)
+var _pgMem={};
+function useCompPageSize(key){var r=React.useState(_pgMem[key]||20);return [r[0],function(v){_pgMem[key]=v;r[1](v);}];}
+function CompPerPage({size,setSize}){
+  return <label style={{display:"flex",alignItems:"center",gap:5,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.5)",textTransform:"uppercase",flex:"0 0 auto"}}>
+    Per page
+    <select value={""+size} onChange={function(e){setSize(parseInt(e.target.value));}} style={{background:"rgba(0,0,0,.35)",border:"1px solid rgba(201,150,42,.3)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:11,padding:"2px 6px",borderRadius:2,outline:"none"}}>
+      {[10,20,50,100,200,500].map(function(n){return <option key={n} value={""+n}>{n}</option>;})}
+    </select>
+  </label>;
+}
+function CompPageNav({total,size,page,setPage}){
+  var pages=Math.max(1,Math.ceil(total/size));
+  if(pages<2)return null;
+  var nums=[];var add=function(p){if(nums.indexOf(p)<0&&p>=0&&p<pages)nums.push(p);};
+  add(0);add(page-1);add(page);add(page+1);add(pages-1);
+  nums.sort(function(a,b){return a-b;});
+  var seq=[];for(var i=0;i<nums.length;i++){if(i>0&&nums[i]-nums[i-1]>1)seq.push(-1);seq.push(nums[i]);}
+  var go=function(v){v=parseInt(v);if(!isNaN(v))setPage(Math.max(0,Math.min(pages-1,v-1)));};
+  var btn=function(active,disabled,onClick,label,key){
+    return <div key={key} onClick={disabled?null:onClick} style={{cursor:disabled?"default":"pointer",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1,textAlign:"center",padding:"4px 8px",borderRadius:2,userSelect:"none",border:"1px solid "+(active?"rgba(201,150,42,.6)":"rgba(201,150,42,.2)"),color:active?"#1a1410":"var(--gold-l)",background:active?"var(--gold)":"transparent",opacity:disabled?.4:1}}>{label}</div>;
+  };
+  return <div style={{marginTop:14,display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"nowrap"}}>
+      {btn(false,page===0,function(){setPage(page-1);},"\u2039","prev")}
+      {seq.map(function(p,i){return p===-1?<span key={"g"+i} style={{fontFamily:"'Cinzel',serif",fontSize:10,color:"rgba(232,213,176,.3)"}}>{"\u2026"}</span>:btn(p===page,false,function(){setPage(p);},""+(p+1),"p"+p);})}
+      {btn(false,page>=pages-1,function(){setPage(page+1);},"\u203a","next")}
+    </div>
+    <span style={{display:"flex",alignItems:"center",gap:5,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.4)",textTransform:"uppercase"}}>
+      Go to
+      <input type="number" min={1} max={pages} defaultValue={page+1} key={"j"+page+"_"+pages} onKeyDown={function(e){if(e.key==="Enter")go(e.target.value);}} onBlur={function(e){go(e.target.value);}} style={{width:52,background:"rgba(0,0,0,.3)",border:"1px solid rgba(201,150,42,.25)",borderRadius:2,color:"var(--gold-l)",fontFamily:"'Cinzel',serif",fontSize:11,textAlign:"center",padding:"3px 4px",outline:"none"}} />
+      {"/ "+pages}
+    </span>
+  </div>;
+}
 // Compendium → Glossary tab: every glossary.md entry, searchable, with a category filter.
 function GlossaryPanel(){
   const [,tick]=React.useState(0);
@@ -4193,6 +4228,8 @@ function GlossaryPanel(){
   const [cat,setCat]=React.useState("all");
   const [typ,setTyp]=React.useState("all");
   const [open,setOpen]=React.useState({});
+  const [pgSize,setPgSize]=useCompPageSize("glossary");
+  const [pg,setPg]=React.useState(0);
   React.useEffect(function(){
     var fn=function(){tick(function(n){return n+1;});};
     _glossListeners.push(fn);loadGlossary();
@@ -4218,6 +4255,9 @@ function GlossaryPanel(){
     return true;
   });
   if(cat==="all"||ql)list.sort(function(a,b){return a.e.name.localeCompare(b.e.name)||a.i-b.i;});
+  var pgSig=[q,dq,cat,typV,pgSize].join("|");
+  React.useEffect(function(){setPg(0);},[pgSig]);
+  var curPg=Math.min(pg,Math.max(1,Math.ceil(list.length/pgSize))-1),pageList=list.slice(curPg*pgSize,curPg*pgSize+pgSize);
   var inp={background:"rgba(0,0,0,.35)",border:"1px solid rgba(201,150,42,.3)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:14,padding:"6px 10px",borderRadius:2,outline:"none",boxSizing:"border-box"};
   var noop=function(){};
   var body=function(t){return (typeof Markdown==="function")?<Markdown text={t} />:<MdField ro={true} value={t} onChange={noop} style={{width:"100%",background:"transparent",border:"none",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:14,lineHeight:1.5,outline:"none",padding:0}} />;};
@@ -4235,8 +4275,11 @@ function GlossaryPanel(){
       </select>}
     </div>
     {st!=="ready"&&<div style={{padding:"20px",textAlign:"center",fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.4)"}}>{st==="error"?"Glossary unavailable — check glossary.md in repo (or you are offline).":"Loading glossary…"}</div>}
-    {st==="ready"&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:12,fontStyle:"italic",color:"rgba(232,213,176,.4)",marginBottom:6}}>{list.length+" entr"+(list.length===1?"y":"ies")}</div>}
-    {st==="ready"&&list.map(function(x){
+    {st==="ready"&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap",marginBottom:6}}>
+      <span style={{fontFamily:"'EB Garamond',serif",fontSize:12,fontStyle:"italic",color:"rgba(232,213,176,.4)"}}>{list.length+" entr"+(list.length===1?"y":"ies")+(list.length>pgSize?" \u00b7 showing "+(curPg*pgSize+1)+"\u2013"+Math.min(curPg*pgSize+pgSize,list.length):"")}</span>
+      <CompPerPage size={pgSize} setSize={setPgSize} />
+    </div>}
+    {st==="ready"&&pageList.map(function(x){
       var e=x.e,isOpen=!!open[x.i],fl=fieldLine(e),sub=e.f.type||e.f.group||"";
       return <div key={x.i} style={{borderBottom:"1px solid rgba(201,150,42,.14)"}}>
         <div onClick={function(){var n=Object.assign({},open);n[x.i]=!isOpen;setOpen(n);}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 4px",cursor:"pointer",userSelect:"none"}}>
@@ -4247,6 +4290,7 @@ function GlossaryPanel(){
         {isOpen&&<div style={{padding:"0 4px 10px 17px"}}><GlossEntryView e={e} /></div>}
       </div>;
     })}
+    {st==="ready"&&<CompPageNav total={list.length} size={pgSize} page={curPg} setPage={setPg} />}
     {st==="ready"&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:11,fontStyle:"italic",color:"rgba(232,213,176,.35)",marginTop:14,lineHeight:1.4}}>This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.</div>}
   </div>;
 }
@@ -7233,7 +7277,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.27.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.28.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
