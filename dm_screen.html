@@ -5793,7 +5793,8 @@ function JournalEntry({cfg,it,i,k,ed,onUpd,onDel,onToggle,dflt}){
         {isEd
           ?<input className="fi" value={it[cfg.t]||""} onChange={function(e){onUpd(cfg.t,e.target.value);}} placeholder={cfg.tp} style={{fontFamily:"'Cinzel',serif",fontSize:13,color:"var(--gold-l)",marginBottom:4}} />
           :<div style={{fontFamily:"'Cinzel',serif",fontSize:13,fontWeight:700,color:"var(--gold-l)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{title||"Untitled"}</div>}
-        {!isEd&&(subTxt||dispo)&&<div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+        {!isEd&&(subTxt||dispo||((cfg.session||cfg.ev)&&it.sy))&&<div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+          {(cfg.session||cfg.ev)&&it.sy&&<span title="Sent to the players" style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1.5,textTransform:"uppercase",padding:"1px 7px",borderRadius:9,background:"rgba(74,156,92,.15)",border:"1px solid rgba(74,156,92,.5)",color:"#7cc98a",flexShrink:0}}>Synced</span>}
           {dispo&&<span style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1.5,textTransform:"uppercase",padding:"1px 7px",borderRadius:9,background:_J_DISPO[dispo].bg,border:"1px solid "+_J_DISPO[dispo].bd,color:_J_DISPO[dispo].c,flexShrink:0}}>{dispo}</span>}
           {subTxt&&<span style={{fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.55)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{subTxt}</span>}
         </div>}
@@ -5817,6 +5818,8 @@ function JournalEntry({cfg,it,i,k,ed,onUpd,onDel,onToggle,dflt}){
           </div>}
           {cfg.ev&&window.__cal&&<CalEventFields it={it} onUpd={onUpd} />}
           {cfg.session&&window.__cal&&<CalSessionFields it={it} onUpd={onUpd} />}
+          {cfg.ev&&<label style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1,color:"rgba(184,154,240,.85)",cursor:"pointer"}}><input type="checkbox" checked={!!it.sy} onChange={function(e){var v=e.target.checked;if(v&&!it.sid)onUpd("sid","e"+Date.now().toString(36)+Math.random().toString(36).slice(2,6));onUpd("sy",v);}} /> Sync with players <span style={{textTransform:"none",letterSpacing:0,fontFamily:"'EB Garamond',serif",fontSize:12,fontStyle:"italic",color:"rgba(232,213,176,.45)"}}>(title, date and notes; read-only for them; needs a date)</span></label>}
+          {cfg.session&&<label style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1,color:"rgba(184,154,240,.85)",cursor:"pointer"}}><input type="checkbox" checked={!!it.sy} onChange={function(e){var v=e.target.checked;if(v&&!it.sid)onUpd("sid","s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6));onUpd("sy",v);}} /> Sync with players <span style={{textTransform:"none",letterSpacing:0,fontFamily:"'EB Garamond',serif",fontSize:12,fontStyle:"italic",color:"rgba(232,213,176,.45)"}}>(title, number and in-world dates only; your notes are never sent)</span></label>}
           {cfg.dispo&&<div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
             {["ally","enemy","neutral"].map(function(d){var a=dispo===d,D=_J_DISPO[d];
               return <span key={d} onClick={function(){onUpd("ty",d);}} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1.5,textTransform:"uppercase",padding:"3px 10px",borderRadius:9,userSelect:"none",background:a?D.bg:"rgba(0,0,0,.2)",border:"1px solid "+(a?D.bd:"rgba(201,150,42,.15)"),color:a?D.c:"rgba(232,213,176,.3)"}}>{d}</span>;})}
@@ -6049,6 +6052,7 @@ function CampaignCalendar({c,s,children,onAddEvent}){
   const adv=function(mins){setCal({now:calAdd(cfg,now,mins)});};
   const evs=c.calEvents||[];
   const byDay={};evs.forEach(function(e){if(e.y==null)return;var k=e.y+"|"+e.p+"|"+e.d;(byDay[k]=byDay[k]||[]).push(e);});
+  const ssDay={};(c.nt1||[]).forEach(function(x){var a=x&&x.cs;if(!a||a.y==null)return;var k=a.y+"|"+a.p+"|"+a.d;(ssDay[k]=ssDay[k]||[]).push(x);});
   const vw=view||{y:now.y,p:now.p};
   const vps=calYearPeriods(cfg,vw.y);
   var vi=vps.findIndex(function(p){return p.id===vw.p;});if(vi<0)vi=0;
@@ -6103,15 +6107,16 @@ function CampaignCalendar({c,s,children,onAddEvent}){
       <div style={{display:"grid",gridTemplateColumns:"repeat("+W+",minmax(0,1fr))",gap:3}}>
         {cells.map(function(d,i){
           if(d==null)return <div key={"b"+i} />;
-          var evn=(byDay[vw.y+"|"+vp.id+"|"+d]||[]).length,today=isNow(d),sl=isSel(d);
-          return <div key={d} onClick={function(){setSel({y:vw.y,p:vp.id,d:d});}} title={evn?evn+" event"+(evn===1?"":"s"):""}
+          var evn=(byDay[vw.y+"|"+vp.id+"|"+d]||[]).length,ssn=(ssDay[vw.y+"|"+vp.id+"|"+d]||[]).length,today=isNow(d),sl=isSel(d);
+          return <div key={d} onClick={function(){setSel({y:vw.y,p:vp.id,d:d});}} title={(evn?evn+" event"+(evn===1?"":"s"):"")+(evn&&ssn?" · ":"")+(ssn?(ssn===1?"a session starts":ssn+" sessions start"):"")}
             style={{cursor:"pointer",minHeight:34,borderRadius:2,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,userSelect:"none",fontFamily:"'Cinzel',serif",fontSize:11,
               background:today?"var(--gold)":"rgba(0,0,0,.3)",color:today?"#1a1410":"var(--parch)",border:"1px solid "+(sl?"var(--gold-l)":"rgba(201,150,42,.15)"),boxShadow:sl?"0 0 0 1px var(--gold-l)":"none"}}>
-            {d}<span style={{width:5,height:5,borderRadius:"50%",background:evn?(today?"#1a1410":"rgba(74,156,92,.9)"):"transparent"}} /></div>;
+            {d}<span style={{display:"flex",gap:3}}><span style={{width:5,height:5,borderRadius:"50%",background:evn?(today?"#1a1410":"rgba(74,156,92,.9)"):"transparent"}} /><span style={{width:5,height:5,borderRadius:"50%",background:ssn?(today?"#1a1410":"rgb(184,154,240)"):"transparent"}} /></span></div>;
         })}
       </div>
       {sel&&<div style={{marginTop:10,paddingTop:8,borderTop:"1px solid rgba(201,150,42,.15)"}}>
         <div style={{fontFamily:"'EB Garamond',serif",fontSize:14,color:"var(--gold-l)",marginBottom:4}}>{calFmt(cfg,sel,true)}</div>
+        {(ssDay[sel.y+"|"+sel.p+"|"+sel.d]||[]).map(function(x,i){return <div key={"s"+i} style={{fontFamily:"'EB Garamond',serif",fontSize:14,color:"rgb(184,154,240)"}}>{"Session "+(x.sn||"")+(x.ti?" · "+x.ti:"")+" starts"}</div>;})}
         {(byDay[sel.y+"|"+sel.p+"|"+sel.d]||[]).map(function(e,i){return <div key={i} style={{fontFamily:"'EB Garamond',serif",fontSize:14,color:"var(--parch)"}}>{(e.h!=null?calTime(e)+" · ":"")+(e.ti||"Untitled")}</div>;})}
         <div style={{display:"flex",gap:8,marginTop:6,flexWrap:"wrap"}}>
           <button type="button" className="arb" style={{margin:0}} onClick={function(){setNow(Object.assign({},sel));}}>Set as today</button>
@@ -6598,7 +6603,7 @@ function CombatTracker({combat,setCombat,setLightbox,onAddCreature}){
     setCombat(Object.assign({},q,{combatants:r.cs,turnId:nextC.id,round:round,started:true}));
     r.logs.forEach(pushRoll);
   };
-  const fullHealAll=function(){window.__confirm("Restore every combatant to full HP?",function(){setCombat(function(p){return Object.assign({},p,{combatants:(p.combatants||[]).map(function(c){return c.maxHp?Object.assign({},c,{hp:c.maxHp}):c;})});});},"Full HP");};
+  const fullHealAll=function(){window.__confirm("Restore every combatant to full HP?",function(){(combatRef.current.combatants||[]).forEach(function(c){if(c.maxHp&&(c.hp||0)<c.maxHp)dmHpHit(c,c.maxHp-(c.hp||0));});setCombat(function(p){return Object.assign({},p,{combatants:(p.combatants||[]).map(function(c){return c.maxHp?Object.assign({},c,{hp:c.maxHp}):c;})});});},"Full HP");};
   const addPC=function(pc){setCombat(function(p){return Object.assign({},p,{combatants:[...(p.combatants||[]),pc]});});};
   const openSbs=order.filter(function(c){return c.expanded&&c.statblockMd;});
   return <div style={{maxWidth:1500,margin:"0 auto",paddingRight:openSbs.length?"min(640px,52vw)":0,transition:"padding .2s"}}>
@@ -6713,7 +6718,7 @@ function CombatRow({c,isTurn,upd,remove,setLightbox,onOpenRoller}){
   const dst=psDeathState(c);
   React.useEffect(function(){if(c.deathSaves&&(c.hp||0)>0&&(c.dsOk||c.dsBad))upd(c.id,{dsOk:0,dsBad:0});},[c.hp,c.deathSaves]);
   const accent=c.type==="pc"?"74,156,92":"123,79,207";
-  const applyDmg=function(sign){var n=parseInt(dmg);if(isNaN(n))return;upd(c.id,function(p){return hpChange(p,sign*n);});setDmg("");};
+  const applyDmg=function(sign){var n=parseInt(dmg);if(isNaN(n))return;upd(c.id,function(p){return hpChange(p,sign*n);});dmHpHit(c,sign*n);setDmg("");};
   const hpPct=c.maxHp?Math.max(0,Math.min(100,Math.round(100*(c.hp||0)/c.maxHp))):100;
   const hpColor=hpPct>50?GRN:hpPct>25?"#c9a02a":RED;
   return <div style={{border:"1px solid rgba("+accent+",."+(isTurn?"7":"25")+")",borderRadius:4,background:isTurn?"rgba("+accent+",.12)":"rgba(0,0,0,.18)",boxShadow:isTurn?"0 0 0 1px rgba("+accent+",.4)":"none",minWidth:0}}>
@@ -6734,11 +6739,11 @@ function CombatRow({c,isTurn,upd,remove,setLightbox,onOpenRoller}){
       <div title="Initiative bonus (added to the d20 when rolling initiative)" style={{fontFamily:"'EB Garamond',serif",fontSize:13,color:"rgba(232,213,176,.7)"}}>⚄ <input value={c.dexMod==null?"":c.dexMod} onChange={function(e){var v=e.target.value.replace(/[^0-9\-]/g,"");upd(c.id,{dexMod:v===""||v==="-"?0:parseInt(v)||0});}} style={Object.assign({},inp,{width:34,textAlign:"center",padding:"3px 2px"})}/></div>
       <div title="Hit Points" style={{display:"flex",alignItems:"center",gap:4}}>
         <span style={{fontSize:13,color:"#e07060"}}>♥</span>
-        <input value={c.hp==null?"":c.hp} onChange={function(e){upd(c.id,{hp:parseInt(e.target.value)||0});}} title="Current HP" style={Object.assign({},inp,{width:42,textAlign:"center",color:hpColor,fontWeight:600,padding:"3px 2px"})}/>
+        <input value={c.hp==null?"":c.hp} onChange={function(e){var nv=parseInt(e.target.value)||0;upd(c.id,{hp:nv});dmHpAdj(c,nv);}} title="Current HP" style={Object.assign({},inp,{width:42,textAlign:"center",color:hpColor,fontWeight:600,padding:"3px 2px"})}/><DmHpPending c={c}/>
         <span style={{color:"rgba(232,213,176,.4)",fontSize:12}}>/</span>
         <input value={c.maxHp==null?"":c.maxHp} onChange={function(e){upd(c.id,{maxHp:parseInt(e.target.value)||0});}} title="Max HP" style={Object.assign({},inp,{width:42,textAlign:"center",padding:"3px 2px"})}/>
         <span style={{fontSize:11,color:"#8ab4e8",marginLeft:4}} title="Temporary HP">+</span>
-        <input value={c.tempHp?c.tempHp:""} placeholder="tmp" onChange={function(e){upd(c.id,{tempHp:Math.max(0,parseInt(e.target.value)||0)});}} title="Temporary HP (damage uses it up first)" style={Object.assign({},inp,{width:38,textAlign:"center",padding:"3px 2px",color:"#8ab4e8"})}/>
+        <input value={c.tempHp?c.tempHp:""} placeholder="tmp" onChange={function(e){var tv=Math.max(0,parseInt(e.target.value)||0);upd(c.id,{tempHp:tv});dmHpTemp(c,tv);}} title="Temporary HP (damage uses it up first)" style={Object.assign({},inp,{width:38,textAlign:"center",padding:"3px 2px",color:"#8ab4e8"})}/>
       </div>
       {c.type!=="pc"&&<label title="Roll death saves automatically on this creature's turn while it is at 0 HP" style={{display:"inline-flex",alignItems:"center",gap:3,cursor:"pointer",fontFamily:"'EB Garamond',serif",fontSize:12,color:c.deathSaves?"#e07060":"rgba(232,213,176,.5)",userSelect:"none"}}><input type="checkbox" checked={!!c.deathSaves} onChange={function(e){upd(c.id,{deathSaves:e.target.checked,dsOk:0,dsBad:0});}} style={{margin:0}}/>☠ Death saves</label>}
       {c.type!=="pc"&&c.deathSaves&&((c.hp||0)<=0||dst.ok>0||dst.bad>0)&&<DsDots ok={dst.ok} bad={dst.bad} onSet={function(k,n){upd(c.id,k==="ok"?{dsOk:n}:{dsBad:n});}}/>}
@@ -7334,6 +7339,117 @@ function psReadFiles(files,onAdd,setErr){
 const SYNC_KEY="dm_sync_v1";
 function syncLoad(){var d={url:"",room:"",on:false};try{return Object.assign(d,JSON.parse(localStorage.getItem(SYNC_KEY)||"{}"));}catch(e){return d;}}
 function syncBase(c){return c.url.replace(/\/+$/,"")+"/rooms/"+encodeURIComponent((c.room||"").trim());}
+// ── DM → player HP ──
+// Each HP change the DM makes to a synced player is sent as one small operation under rooms/<room>/dm/hp/<player id>/<op id>:
+// {k:"dmg"|"heal"|"adj", n}. The sheet applies it once with its own rules (temp HP first, floor 0, cap at max) and deletes it.
+// Operations wait in a local outbox until they are delivered, so a dropped connection doesn't lose them.
+// ── DM → players: the calendar (names, weekdays, year suffix, current date and time) ──
+// Written to rooms/<room>/dm/cal as one small record whenever it changes; sheets that are in the room follow it.
+var _dmCalWant="",_dmCalSent="",_dmCalBusy=false;
+function dmCalSet(notes){
+  try{var cf=_calCfg(notes),nw=calNorm(cf,Object.assign({y:1492,p:cf.periods[0].id,d:1,h:8,mi:0},(notes&&notes.cal&&notes.cal.now)||{}));_dmCalWant=JSON.stringify({cfg:cf,now:nw});}catch(e){}
+}
+async function dmCalFlush(){
+  var cfg=syncLoad();if(!cfg.on||!cfg.url||!cfg.room||!_dmCalWant||_dmCalBusy)return;
+  var key=cfg.url+"|"+cfg.room+"|"+_dmCalWant;if(key===_dmCalSent)return;
+  _dmCalBusy=true;
+  try{var o=JSON.parse(_dmCalWant);o.v=Date.now();var r=await fetch(syncBase(cfg)+"/dm/cal.json",{method:"PUT",body:JSON.stringify(o)});if(r.ok)_dmCalSent=key;}catch(e){}
+  _dmCalBusy=false;
+}
+setInterval(dmCalFlush,2000);
+// ── DM → players: sessions ticked "Sync" (title, number, in-world dates; never the notes text) ──
+var _dmSsWant="",_dmSsSent="",_dmSsBusy=false;
+function dmSessSet(notes){
+  try{var items={};((notes&&notes.nt1)||[]).forEach(function(x){if(!x||!x.sy||!x.sid)return;var o={ti:x.ti||"",sn:x.sn==null?"":x.sn};if(x.cs&&x.cs.y!=null)o.cs=x.cs;if(x.ce&&x.ce.y!=null)o.ce=x.ce;items[x.sid]=o;});_dmSsWant=JSON.stringify(items);}catch(e){}
+}
+async function dmSessFlush(){
+  var cfg=syncLoad();if(!cfg.on||!cfg.url||!cfg.room||!_dmSsWant||_dmSsBusy)return;
+  var key=cfg.url+"|"+cfg.room+"|"+_dmSsWant;if(key===_dmSsSent)return;
+  _dmSsBusy=true;
+  try{var r=await fetch(syncBase(cfg)+"/dm/sessions.json",{method:"PUT",body:JSON.stringify({v:Date.now(),items:JSON.parse(_dmSsWant)})});if(r.ok)_dmSsSent=key;}catch(e){}
+  _dmSsBusy=false;
+}
+setInterval(dmSessFlush,2000);
+// ── DM → players: calendar events ticked "Sync" (title, date, notes) ──
+var _dmEvWant="",_dmEvSent="",_dmEvBusy=false;
+function dmEvSet(notes){
+  try{var items={};((notes&&notes.calEvents)||[]).forEach(function(x){if(!x||!x.sy||!x.sid||x.y==null)return;var o={ti:x.ti||"",tx:x.tx||"",y:x.y,p:x.p,d:x.d};if(x.h!=null)o.h=x.h;if(x.mi!=null)o.mi=x.mi;items[x.sid]=o;});_dmEvWant=JSON.stringify(items);}catch(e){}
+}
+async function dmEvFlush(){
+  var cfg=syncLoad();if(!cfg.on||!cfg.url||!cfg.room||!_dmEvWant||_dmEvBusy)return;
+  var key=cfg.url+"|"+cfg.room+"|"+_dmEvWant;if(key===_dmEvSent)return;
+  _dmEvBusy=true;
+  try{var r=await fetch(syncBase(cfg)+"/dm/events.json",{method:"PUT",body:JSON.stringify({v:Date.now(),items:JSON.parse(_dmEvWant)})});if(r.ok)_dmEvSent=key;}catch(e){}
+  _dmEvBusy=false;
+}
+setInterval(dmEvFlush,2000);
+var DM_HP_OUTBOX="dm_hp_outbox_v1";
+function dmHpOutLoad(){try{var a=JSON.parse(localStorage.getItem(DM_HP_OUTBOX)||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
+function dmHpOutSave(a){try{localStorage.setItem(DM_HP_OUTBOX,JSON.stringify(a.slice(-200)));}catch(e){}}
+var _dmHpBusy=false;
+async function dmHpFlush(){
+  if(_dmHpBusy)return;
+  var cfg=syncLoad();if(!cfg.on||!cfg.url||!cfg.room)return;
+  var q=dmHpOutLoad().filter(function(x){return Date.now()-x.t<7200000;});
+  if(!q.length){return;}
+  _dmHpBusy=true;
+  var sent=[];
+  try{
+    for(var i=0;i<q.length;i++){
+      var x=q[i];if(x.sent)continue;
+      var r=await fetch(syncBase(cfg)+"/dm/hp/"+encodeURIComponent(x.pid)+"/"+encodeURIComponent(x.id)+".json",{method:"PUT",body:JSON.stringify({k:x.k,n:x.n,t:x.t})});
+      if(!r.ok)throw new Error("HTTP "+r.status);
+      sent.push(x.id);
+    }
+  }catch(e){}
+  // Sent changes stay listed as "pending" until the sheet has applied them (they disappear from the room).
+  dmHpOutSave(dmHpOutLoad().filter(function(y){return Date.now()-y.t<7200000;}).map(function(y){return sent.indexOf(y.id)>=0?Object.assign({},y,{sent:true}):y;}));
+  _dmHpBusy=false;
+}
+function dmHpPending(pid){return !!pid&&dmHpOutLoad().some(function(y){return y.pid===pid&&Date.now()-y.t<7200000;});}
+// Ask the room which sent changes are still waiting; the ones the sheet has already applied are no longer pending.
+async function dmHpAckCheck(){
+  var cfg=syncLoad();if(!cfg.on||!cfg.url||!cfg.room)return;
+  var q=dmHpOutLoad(),pids={};q.forEach(function(y){if(y.sent)pids[y.pid]=1;});
+  var gone={};
+  for(var pid in pids){
+    try{
+      var r=await syncGet(syncBase(cfg)+"/dm/hp/"+encodeURIComponent(pid)+".json");if(!r.ok)continue;
+      var o=await r.json()||{};
+      q.forEach(function(y){if(y.pid===pid&&y.sent&&!o[y.id])gone[y.id]=1;});
+    }catch(e){}
+  }
+  if(Object.keys(gone).length)dmHpOutSave(dmHpOutLoad().filter(function(y){return !gone[y.id];}));
+}
+function DmHpPending({c}){
+  const [,tick]=useState(0);
+  useEffect(function(){var iv=setInterval(function(){tick(function(n){return n+1;});},700);return function(){clearInterval(iv);};},[]);
+  if(!c||c.type!=="pc"||!dmHpPending(c.syncId))return null;
+  return <span title="HP change sent, waiting for the player's sheet to confirm" style={{fontSize:11,color:"#c9a02a",marginLeft:2}}>⏳</span>;
+}
+function dmHpQueue(pid,op){
+  if(!pid||!op||(!op.n&&op.k!=="temp"))return;
+  var q=dmHpOutLoad();q.push({id:uid(),pid:pid,k:op.k,n:op.n,t:Date.now()});dmHpOutSave(q);dmHpFlush();
+}
+// Damage / heal buttons: send the amount, so the sheet applies its own temp-HP rules.
+function dmHpHit(c,delta){if(!c||c.type!=="pc"||!c.syncId||!delta)return;dmHpQueue(c.syncId,{k:delta<0?"dmg":"heal",n:Math.abs(delta)});}
+// Typed HP / "full": send the net change once typing has paused, as damage (temp HP first) or heal.
+var _dmHpAdj={};
+function dmHpAdj(c,newHp){
+  if(!c||c.type!=="pc"||!c.syncId)return;
+  var e=_dmHpAdj[c.id];if(!e)e=_dmHpAdj[c.id]={base:c.hp||0,pid:c.syncId};
+  e.last=newHp;clearTimeout(e.tm);
+  e.tm=setTimeout(function(){delete _dmHpAdj[c.id];var d=e.last-e.base;if(d)dmHpQueue(e.pid,{k:d<0?"dmg":"heal",n:Math.abs(d)});},1200);
+}
+// Typed temp HP: sent as the new total (the sheet sets it, it doesn't add) once typing has paused.
+var _dmHpTmp={};
+function dmHpTemp(c,v){
+  if(!c||c.type!=="pc"||!c.syncId)return;
+  var e=_dmHpTmp[c.id];if(!e)e=_dmHpTmp[c.id]={pid:c.syncId};
+  e.v=v;clearTimeout(e.tm);
+  e.tm=setTimeout(function(){delete _dmHpTmp[c.id];dmHpQueue(e.pid,{k:"temp",n:e.v});},1200);
+}
+setInterval(dmHpFlush,3000);
 function syncParse(text){var raw=JSON.parse(text);var th=raw.__thumb;delete raw.__thumb;var snap=psSnapshot(raw);snap._thumb=th||"";return snap;}
 function psNewCombatant(snap,name,syncId,updated){
   var dd=psDerive(snap);
@@ -7401,10 +7517,12 @@ function SyncButton({combat,setCombat}){
           });
         }
       }catch(e){}
+      await dmHpAckCheck();
       var list=(comb.current.combatants||[]).slice();
       for(var i=0;i<list.length;i++){
         var x=list[i],m=x.syncId&&meta[x.syncId];
         if(!m||m.updated===x.syncUpdated)continue;
+        if(dmHpPending(x.syncId))continue; // a change is on its way to this sheet: take the sheet's new copy only after it has applied it
         var dr=await syncGet(b+"/data/"+encodeURIComponent(x.syncId)+".json");
         if(!dr.ok)continue;
         var txt=await dr.json();if(!txt)continue;
@@ -7545,14 +7663,14 @@ function PcHpBox({c,upd}){
   const [d,setD]=useState("");
   const pct=c.maxHp?Math.max(0,Math.min(100,Math.round(100*(c.hp||0)/c.maxHp))):100;
   const col=pct>50?GRN:pct>25?"#c9a02a":RED;
-  const apply=function(sign){var n=parseInt(d);if(isNaN(n))return;upd(c.id,function(p){return hpChange(p,sign*n);});setD("");};
+  const apply=function(sign){var n=parseInt(d);if(isNaN(n))return;upd(c.id,function(p){return hpChange(p,sign*n);});dmHpHit(c,sign*n);setD("");};
   return <div style={{minWidth:190,flex:"1 1 190px",maxWidth:280,border:"1px solid rgba(74,156,92,.3)",borderRadius:4,background:"rgba(0,0,0,.22)",padding:"6px 8px"}}>
     <div style={{display:"flex",alignItems:"center",gap:6}}>
       <span style={{flex:1,minWidth:0,fontFamily:"'Cinzel',serif",fontSize:13,color:PARCH,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name||"?"}</span>
       <span style={{fontSize:13,color:"#e07060"}}>♥</span>
-      <input value={c.hp==null?"":c.hp} onChange={function(e){upd(c.id,{hp:parseInt(e.target.value)||0});}} title="Current HP" style={Object.assign({},inp,{width:40,textAlign:"center",color:col,fontWeight:600,padding:"2px"})}/>
+      <input value={c.hp==null?"":c.hp} onChange={function(e){var nv=parseInt(e.target.value)||0;upd(c.id,{hp:nv});dmHpAdj(c,nv);}} title="Current HP" style={Object.assign({},inp,{width:40,textAlign:"center",color:col,fontWeight:600,padding:"2px"})}/><DmHpPending c={c}/>
       <span style={{color:"rgba(232,213,176,.4)",fontSize:12}}>/ {c.maxHp||"–"}</span>
-      <input value={c.tempHp?c.tempHp:""} placeholder="tmp" onChange={function(e){upd(c.id,{tempHp:Math.max(0,parseInt(e.target.value)||0)});}} title="Temporary HP (damage uses it up first)" style={Object.assign({},inp,{width:34,textAlign:"center",padding:"2px",color:"#8ab4e8",fontSize:12})}/>
+      <input value={c.tempHp?c.tempHp:""} placeholder="tmp" onChange={function(e){var tv=Math.max(0,parseInt(e.target.value)||0);upd(c.id,{tempHp:tv});dmHpTemp(c,tv);}} title="Temporary HP (damage uses it up first)" style={Object.assign({},inp,{width:34,textAlign:"center",padding:"2px",color:"#8ab4e8",fontSize:12})}/>
     </div>
     <div style={{height:3,background:"rgba(0,0,0,.4)",margin:"5px 0",borderRadius:2,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:col,transition:"width .2s"}}/></div>
     <div style={{display:"flex",alignItems:"center",gap:3}}>
@@ -7561,7 +7679,7 @@ function PcHpBox({c,upd}){
       <div onClick={function(){apply(-1);}} title="Damage" style={{cursor:"pointer",color:"#e07060",border:"1px solid rgba(201,74,42,.4)",borderRadius:2,padding:"1px 8px",fontSize:13,userSelect:"none"}}>−</div>
       <div onClick={function(){apply(1);}} title="Heal" style={{cursor:"pointer",color:"#7cc98a",border:"1px solid rgba(74,156,92,.4)",borderRadius:2,padding:"1px 8px",fontSize:13,userSelect:"none"}}>+</div>
       <div style={{flex:1}}/>
-      <div onClick={function(){if(c.maxHp)upd(c.id,{hp:c.maxHp});}} title="Full HP" style={{cursor:"pointer",color:"#7cc98a",fontSize:12,userSelect:"none"}}>full</div>
+      <div onClick={function(){if(c.maxHp){upd(c.id,{hp:c.maxHp});dmHpAdj(c,c.maxHp);}}} title="Full HP" style={{cursor:"pointer",color:"#7cc98a",fontSize:12,userSelect:"none"}}>full</div>
     </div>
   </div>;
 }
@@ -7601,6 +7719,9 @@ function App(){
   const NOTE_KEYS=["npc","locations","lore","factions","nt1","nt3","customSections","calEvents"];
   const [tab,setTab]=useState("combat");
   const [notes,setNotes]=useState({npc:[],locations:[],lore:[],factions:[],nt1:[],nt3:[],customSections:[]});
+  useEffect(function(){dmCalSet(notes);},[notes.cal]);
+  useEffect(function(){dmSessSet(notes);},[notes.nt1]);
+  useEffect(function(){dmEvSet(notes);},[notes.calEvents]);
   const [combat,setCombat]=useState({round:1,turnId:null,started:false,combatants:[]});
   const [lightbox,setLightbox]=useState(null);
   const pcKey=JSON.stringify((combat.combatants||[]).filter(function(c){return c.type==="pc";}).map(function(c){return {id:c.id,name:c.name,init:(c.init===""||c.init==null)?null:+c.init};}));
@@ -7726,7 +7847,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.33.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.39.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
