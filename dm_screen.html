@@ -21,6 +21,12 @@ html.light-theme{filter:invert(1) hue-rotate(180deg) contrast(1.1)}
 html.light-theme img{filter:contrast(0.909) invert(1) hue-rotate(180deg)}
 /* Faux-bold: thicken every glyph by its own color so small text reads heavier in light mode. */
 html.light-theme,html.light-theme input,html.light-theme select,html.light-theme textarea,html.light-theme button{-webkit-text-stroke:0.3px currentColor}
+  .jc{background:rgba(0,0,0,.25);border:1px solid rgba(201,150,42,.15);padding:10px 14px;margin-bottom:8px;transition:background .15s}
+  .jc:hover{background:rgba(0,0,0,.34)}
+  .jlink{color:var(--gold-l);cursor:pointer;border-bottom:1px dotted rgba(201,150,42,.7);background:rgba(201,150,42,.1);padding:0 3px;border-radius:3px}
+  .jlink:hover{background:rgba(201,150,42,.25)}
+  @keyframes jflash{0%{box-shadow:0 0 0 2px rgba(201,150,42,.9),0 0 18px rgba(201,150,42,.6)}100%{box-shadow:0 0 0 2px rgba(201,150,42,0),0 0 0 rgba(201,150,42,0)}}
+  .jflash{animation:jflash 1.5s ease-out}
 </style>
 <script>
 // Apply saved theme as early as possible to avoid a flash of the wrong theme.
@@ -234,6 +240,19 @@ function _mdParseBlocks(text){
   }
   return blocks;
 }
+var _mdMention=null; // set by <Markdown mentions> for the duration of its render: [{name,lc,ref}] longest first
+function _mdFindMention(cand,bracket){
+  var lc=cand.toLowerCase();
+  for(var i=0;i<_mdMention.length;i++){
+    var m=_mdMention[i];
+    if(bracket){if(m.lc===lc.trim()) return {m:m,len:cand.length};}
+    else if(lc.indexOf(m.lc)===0){
+      var nx=lc.charAt(m.lc.length);
+      if(!nx||!/[a-z0-9]/.test(nx)) return {m:m,len:m.lc.length};
+    }
+  }
+  return null;
+}
 function _mdInline(text){
   var out=[]; var rest=text==null?"":(""+text);
   var patterns=[
@@ -244,6 +263,7 @@ function _mdInline(text){
     {re:/\b_([^_]+?)_\b/,t:"i"},
     {re:/\[([^\]]+)\]\(([^)\s]+)\)/,t:"a"}
   ];
+  if(_mdMention&&_mdMention.length) patterns.push({re:/@\[([^\]]+)\]|@([^\n@*_`\[\]()]{1,60})/,t:"m"});
   var guard=0;
   while(rest&&guard++<5000){
     var best=null,bestIdx=Infinity,bestPat=null;
@@ -259,7 +279,13 @@ function _mdInline(text){
     else if(bestPat.t==="ig") out.push({t:"i",children:_mdInline(best[2])});
     else if(bestPat.t==="i") out.push({t:"i",children:_mdInline(best[1])});
     else if(bestPat.t==="a") out.push({t:"a",v:best[1],href:best[2]});
-    var consumedLen=(bestPat.t==="ig")?(best[0].length-(best[1]?best[1].length:0)):best[0].length;
+    var mConsumed=0;
+    if(bestPat.t==="m"){
+      var br=best[1]!=null,hit=_mdFindMention(br?best[1]:best[2],br);
+      if(hit){out.push({t:"m",v:hit.m.name,ref:hit.m.ref});mConsumed=br?best[0].length:1+hit.len;}
+      else{out.push({t:"text",v:"@"});mConsumed=1;}
+    }
+    var consumedLen=bestPat.t==="m"?mConsumed:(bestPat.t==="ig")?(best[0].length-(best[1]?best[1].length:0)):best[0].length;
     rest=rest.slice(bestIdx+consumedLen);
   }
   return out;
@@ -272,11 +298,13 @@ function _mdRenderInline(tokens,kp){
     if(tok.t==="b") return <strong key={key}>{_mdRenderInline(tok.children,key)}</strong>;
     if(tok.t==="i") return <em key={key}>{_mdRenderInline(tok.children,key)}</em>;
     if(tok.t==="bi") return <strong key={key}><em>{_mdRenderInline(tok.children,key)}</em></strong>;
+    if(tok.t==="m") return <span key={key} className="jlink" title={"Go to "+tok.v} onClick={function(e){e.stopPropagation();if(window.__jnGo)window.__jnGo(tok.ref);}}>{tok.v}</span>;
     if(tok.t==="a") return <a key={key} href={tok.href} target="_blank" rel="noopener noreferrer" onClick={function(e){e.stopPropagation();}} style={{color:"var(--arcane-l)",textDecoration:"underline"}}>{tok.v}</a>;
     return null;
   });
 }
-function Markdown({text}){
+function Markdown({text,mentions}){
+  _mdMention=(mentions&&window.__jnNames&&window.__jnNames.length)?window.__jnNames:null;
   if(text==null||text==="") return null;
   var blocks=_mdParseBlocks(""+text);
   return (<div className="md">{blocks.map(function(b,bi){
@@ -317,9 +345,34 @@ function FluffImg({urls,onZoom}){
 }
 
 // Click-to-edit field: shows rendered markdown; click switches to a raw textarea
-function MdField({value,onChange,placeholder,style,className}){
+// for editing, blur switches back. Drop-in replacement for the description
+// AutoTextareas so user-written markdown renders.
+function MdField({value,onChange,placeholder,style,className,mentions,ro}){
   const [editing,setEditing]=React.useState(false);
   const ref=React.useRef(null);
+  const [mq,setMq]=React.useState(null); // {start,q} while typing an @mention
+  const [mi,setMi]=React.useState(0);
+  var mList=[];
+  if(mentions&&mq&&window.__jnNames){
+    var ql=mq.q.toLowerCase();
+    mList=window.__jnNames.filter(function(n){return n.lc.indexOf(ql)>=0;}).sort(function(a,b){return (a.lc.indexOf(ql)===0?0:1)-(b.lc.indexOf(ql)===0?0:1)||a.lc.length-b.lc.length;}).slice(0,6);
+  }
+  var pick=function(n){
+    var el=ref.current;if(!el||!mq) return;
+    var v=el.value,caret=el.selectionStart;
+    var ins="@"+(/[^A-Za-z0-9'’\-]/.test(n.name)?"["+n.name+"]":n.name)+" ";
+    var nv=v.slice(0,mq.start)+ins+v.slice(caret);
+    onChange({target:{value:nv}});setMq(null);
+    var pos=mq.start+ins.length;
+    requestAnimationFrame(function(){var e2=ref.current;if(e2){e2.focus();try{e2.setSelectionRange(pos,pos);}catch(x){}}});
+  };
+  var onTyping=function(e){
+    onChange(e);
+    if(!mentions) return;
+    var el=e.target,caret=el.selectionStart==null?el.value.length:el.selectionStart;
+    var m=/@(\[?)([^@\n\]]{0,30})$/.exec(el.value.slice(0,caret));
+    if(m&&(m.index===0||/\s|[(\-]/.test(el.value.charAt(m.index-1)))){setMq({start:m.index,q:m[2]});setMi(0);} else setMq(null);
+  };
   React.useEffect(function(){
     if(editing&&ref.current){var el=ref.current;el.style.height="auto";el.style.height=el.scrollHeight+"px";
       el.focus(); try{el.setSelectionRange(el.value.length,el.value.length);}catch(e){}}
@@ -328,13 +381,27 @@ function MdField({value,onChange,placeholder,style,className}){
     if(editing&&ref.current){var el=ref.current;el.style.height="auto";el.style.height=el.scrollHeight+"px";}
   },[value,editing]);
   if(editing){
-    return <textarea ref={ref} className={className} value={value||""} onChange={onChange} onBlur={function(){setEditing(false);}}
+    var ta=<textarea ref={ref} className={className} value={value||""} onChange={onTyping} onBlur={function(){setEditing(false);setMq(null);}}
+      onKeyDown={mList.length?function(e){
+        if(e.key==="ArrowDown"){e.preventDefault();setMi((mi+1)%mList.length);}
+        else if(e.key==="ArrowUp"){e.preventDefault();setMi((mi+mList.length-1)%mList.length);}
+        else if(e.key==="Enter"||e.key==="Tab"){e.preventDefault();pick(mList[Math.min(mi,mList.length-1)]);}
+        else if(e.key==="Escape"){e.preventDefault();setMq(null);}
+      }:undefined}
       placeholder={placeholder} style={{minHeight:"1.5em",width:"100%",boxSizing:"border-box",...style,height:"auto",overflow:"hidden",resize:"none"}} />;
+    if(!mentions) return ta;
+    return <div style={{position:"relative"}}>{ta}
+      {mList.length>0&&<div style={{position:"absolute",left:0,top:"100%",zIndex:60,minWidth:200,maxWidth:"100%",background:"#1a1410",border:"1px solid rgba(201,150,42,.4)",boxShadow:"0 6px 20px rgba(0,0,0,.7)",borderRadius:3,overflow:"hidden"}}>
+        {mList.map(function(n,ni){return <div key={ni} onMouseDown={function(e){e.preventDefault();pick(n);}} onTouchStart={function(e){e.preventDefault();pick(n);}}
+          style={{padding:"7px 10px",cursor:"pointer",fontFamily:"'EB Garamond',serif",fontSize:14,color:ni===mi?"var(--gold-l)":"var(--parch)",background:ni===mi?"rgba(201,150,42,.18)":"transparent",display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1.2,textTransform:"uppercase",color:"rgba(184,154,240,.6)",flexShrink:0}}>{n.ref.label}</span>{n.name}</div>;})}
+      </div>}
+    </div>;
   }
   var hasContent=value&&(""+value).trim();
-  return <div className={className} onClick={function(){setEditing(true);}} title="Click to edit"
-    style={{cursor:"text",minHeight:"1.4em",width:"100%",boxSizing:"border-box",...style,whiteSpace:"normal"}}>
-    {hasContent?<Markdown text={value} />:<span style={{opacity:.4,fontStyle:"italic"}}>{placeholder||"Click to add…"}</span>}
+  return <div className={className} onClick={ro?undefined:function(){setEditing(true);}} title={ro?undefined:"Click to edit"}
+    style={{cursor:ro?"inherit":"text",minHeight:"1.4em",width:"100%",boxSizing:"border-box",...style,whiteSpace:"normal"}}>
+    {hasContent?<Markdown text={value} mentions={mentions} />:<span style={{opacity:.4,fontStyle:"italic"}}>{placeholder||"Click to add…"}</span>}
   </div>;
 }
 
@@ -5652,6 +5719,441 @@ const PAGES=[
 ];
 
 
+// Session-only "edit mode" for spells / features / items: entries open read-only and the
+// pencil toggles editing. Never stored in the character file. A blank entry (just added)
+// starts in edit mode so it can be filled in.
+const _edit={set:new Set(),subs:new Set()};
+var _roGuard=false;
+function useEditSet(){
+  if(!_roGuard){_roGuard=true;document.addEventListener("focusin",function(e){var x=e.target;if(x&&x.closest&&x.closest("[data-ro]")&&x.blur)x.blur();},true);}
+  const [,force]=React.useState(0);
+  React.useEffect(function(){var fn=function(){force(function(n){return n+1;});};_edit.subs.add(fn);return function(){_edit.subs.delete(fn);};},[]);
+  return {
+    has:function(k,blank,open){if(open===false){_edit.set.delete(k);return false;}if(blank&&!_edit.set.has(k))_edit.set.add(k);return _edit.set.has(k);},
+    toggle:function(k){if(_edit.set.has(k))_edit.set.delete(k);else _edit.set.add(k);_edit.subs.forEach(function(fn){fn();});},
+    on:function(k){_edit.set.add(k);_edit.subs.forEach(function(fn){fn();});},
+    clear:function(prefix){Array.from(_edit.set).forEach(function(k){if(k.indexOf(prefix)===0)_edit.set.delete(k);});_edit.subs.forEach(function(fn){fn();});}
+  };
+}
+// Click anywhere on a read-only line (not on a button / field / link / data-keep area) to open or close it.
+function lineClick(e,fn){
+  if(e.target.closest('button,input,select,textarea,a,label,.tog,[data-keep]')) return;
+  try{if(window.getSelection&&window.getSelection().toString()) return;}catch(x){}
+  fn();
+}
+function EditPencil({on,onClick}){
+  return <button type="button" onClick={function(e){e.stopPropagation();onClick();}} title={on?"Done editing":"Edit"}
+    style={{background:on?"rgba(201,150,42,.18)":"transparent",border:"1px solid rgba(201,150,42,"+(on?".6":".3")+")",color:on?"var(--gold-l)":"rgba(201,150,42,.6)",cursor:"pointer",padding:0,width:22,height:22,borderRadius:2,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0,verticalAlign:"middle"}}>
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 2.5l2.5 2.5L5 13.5 1.8 14.2 2.5 11z"/><path d="M9.5 4l2.5 2.5"/></svg>
+  </button>;
+}
+
+function Chev({open}){
+  return <span style={{display:"inline-block",width:7,height:7,borderRight:"2px solid currentColor",borderBottom:"2px solid currentColor",transform:open?"rotate(-135deg) translate(-1px,-1px)":"rotate(-45deg)",marginLeft:open?0:-2,marginTop:open?3:0,pointerEvents:"none"}} />;
+}
+function JIcon({name,size,color}){
+  var P={
+    user:<g><circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-4 3-6.5 7-6.5s7 2.5 7 6.5"/></g>,
+    pin:<g><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0113 0c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></g>,
+    book:<g><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"/><path d="M5 17a3 3 0 013-3h11"/></g>,
+    shield:<g><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/></g>,
+    quill:<g><path d="M20 4c-7 0-12 4-13 11l-2 5 5-2c7-1 11-6 10-14z"/><path d="M9 15l7-7"/></g>,
+    cal:<g><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></g>,
+    note:<g><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></g>
+  };
+  return <svg width={size||16} height={size||16} viewBox="0 0 24 24" fill="none" stroke={color||"currentColor"} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>{P[name]||P.note}</svg>;
+}
+var _J_DISPO={ally:{c:"#6dbb80",bg:"rgba(74,156,92,.2)",bd:"rgba(74,156,92,.45)"},enemy:{c:"#e07060",bg:"rgba(201,74,42,.2)",bd:"rgba(201,74,42,.45)"},neutral:{c:"#60b4c4",bg:"rgba(42,140,156,.2)",bd:"rgba(42,140,156,.45)"}};
+function _jPreview(t){return ((t||"").replace(/@\[([^\]]+)\]/g,"@$1").replace(/[*_#>`~\[\]]/g," ").replace(/\s+/g," ").trim());}
+function _jDate(d){
+  if(!d) return "";
+  var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  if(!m) return d;
+  try{return new Date(+m[1],+m[2]-1,+m[3]).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"});}catch(e){return d;}
+}
+function _jToday(){var d=new Date(),z=function(n){return (n<10?"0":"")+n;};return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate());}
+
+function JournalEntry({cfg,it,i,k,ed,onUpd,onDel,onToggle,dflt}){
+  var title=(it[cfg.t]||"").trim();
+  var nameless=!title&&!(cfg.session&&String(it.sn==null?"":it.sn).trim());
+  var open=(it.showDesc===undefined&&dflt===false?false:it.showDesc!==false)||nameless;
+  var isEd=ed.has(k,nameless,open);
+  var dispo=cfg.dispo?(_J_DISPO[it.ty]?it.ty:"neutral"):null;
+  var accent=dispo?_J_DISPO[dispo].c:cfg.color;
+  var body=it[cfg.b]||"";
+  var subTxt=cfg.ev?(window.__cal?window.__cal.evSub(it):""):cfg.session?[it.sn!==undefined&&String(it.sn).trim()?"Session "+it.sn:"",_jDate(it.dt),(window.__cal?window.__cal.range(it):"")].filter(Boolean).join(" · "):(it[cfg.s]||"");
+  var inBtn={background:"transparent",border:"1px solid rgba(201,150,42,.3)",cursor:"pointer",width:22,height:22,borderRadius:2,padding:0,display:"inline-flex",alignItems:"center",justifyContent:"center",flexShrink:0,verticalAlign:"middle"};
+  var badge=<div style={{width:32,height:32,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"radial-gradient(circle at 35% 30%, "+accent+"33, rgba(0,0,0,.35))",border:"1px solid "+accent+"88",color:accent,fontFamily:"'Cinzel',serif",fontSize:15,fontWeight:700}}>
+    {cfg.dispo?((title||"?").charAt(0).toUpperCase()):<JIcon name={cfg.icon} size={16} />}</div>;
+  return <div className="jc" data-jc="1" data-jid={k} onClick={isEd?undefined:function(e){lineClick(e,onToggle);}}
+    style={{borderLeft:"3px solid "+accent,cursor:isEd?"default":"pointer"}}>
+    <div style={{display:"flex",alignItems:"center",gap:10}}>
+      {badge}
+      <div style={{flex:1,minWidth:0}}>
+        {isEd
+          ?<input className="fi" value={it[cfg.t]||""} onChange={function(e){onUpd(cfg.t,e.target.value);}} placeholder={cfg.tp} style={{fontFamily:"'Cinzel',serif",fontSize:13,color:"var(--gold-l)",marginBottom:4}} />
+          :<div style={{fontFamily:"'Cinzel',serif",fontSize:13,fontWeight:700,color:"var(--gold-l)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{title||"Untitled"}</div>}
+        {!isEd&&(subTxt||dispo)&&<div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+          {dispo&&<span style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1.5,textTransform:"uppercase",padding:"1px 7px",borderRadius:9,background:_J_DISPO[dispo].bg,border:"1px solid "+_J_DISPO[dispo].bd,color:_J_DISPO[dispo].c,flexShrink:0}}>{dispo}</span>}
+          {subTxt&&<span style={{fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.55)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{subTxt}</span>}
+        </div>}
+      </div>
+      <button type="button" title={it.pin?"Unpin":"Pin to top"} onClick={function(e){e.stopPropagation();onUpd("pin",!it.pin);}}
+        style={Object.assign({},inBtn,{color:it.pin?"var(--gold-l)":"rgba(201,150,42,.4)",background:it.pin?"rgba(201,150,42,.15)":"transparent",borderColor:it.pin?"rgba(201,150,42,.6)":"rgba(201,150,42,.25)"})}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill={it.pin?"currentColor":"none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M12 3l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 17l-5.6 3 1.3-6.2L3 9.5l6.3-.7z"/></svg></button>
+      {!nameless&&<button type="button" title={open?"Close":"Open"} onClick={function(e){e.stopPropagation();onToggle();}}
+        style={Object.assign({},inBtn,{borderColor:"rgba(184,154,240,.35)",color:"rgba(184,154,240,.7)"})}><Chev open={open} /></button>}
+      {open&&<EditPencil on={isEd} onClick={function(){ed.toggle(k);}} />}
+      <button className="db" onClick={function(e){e.stopPropagation();onDel();}}>x</button>
+    </div>
+    {!open&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",padding:"4px 2px 0 42px"}}>{_jPreview(body)||"(no notes yet)"}</div>}
+    {open&&<div style={{marginTop:8,paddingLeft:42}}>
+      {isEd
+        ?<div>
+          {cfg.s&&<input className="fi" value={it[cfg.s]||""} onChange={function(e){onUpd(cfg.s,e.target.value);}} placeholder={cfg.sp} style={{marginBottom:6}} />}
+          {cfg.session&&<div style={{display:"flex",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+            <input className="fi" type="number" min="0" value={it.sn==null?"":it.sn} onChange={function(e){onUpd("sn",e.target.value);}} placeholder="Session #" style={{width:96,flex:"0 0 96px"}} />
+            <input className="fi" type="date" value={it.dt||""} onChange={function(e){onUpd("dt",e.target.value);}} style={{width:150,flex:"0 0 150px"}} />
+          </div>}
+          {cfg.ev&&window.__cal&&<CalEventFields it={it} onUpd={onUpd} />}
+          {cfg.session&&window.__cal&&<CalSessionFields it={it} onUpd={onUpd} />}
+          {cfg.dispo&&<div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+            {["ally","enemy","neutral"].map(function(d){var a=dispo===d,D=_J_DISPO[d];
+              return <span key={d} onClick={function(){onUpd("ty",d);}} style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1.5,textTransform:"uppercase",padding:"3px 10px",borderRadius:9,userSelect:"none",background:a?D.bg:"rgba(0,0,0,.2)",border:"1px solid "+(a?D.bd:"rgba(201,150,42,.15)"),color:a?D.c:"rgba(232,213,176,.3)"}}>{d}</span>;})}
+          </div>}
+          <MdField mentions className="fi" value={body} onChange={function(e){onUpd(cfg.b,e.target.value);}} placeholder={cfg.bp} style={{minHeight:64,width:"100%"}} />
+        </div>
+        :(body.trim()
+          ?<div style={{fontFamily:"'EB Garamond',serif",fontSize:14,lineHeight:1.5,color:"var(--parch)"}}><Markdown text={body} mentions /></div>
+          :<div style={{fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.3)"}}>No notes yet; use the pencil to write.</div>)}
+    </div>}
+  </div>;
+}
+
+// A whole journal list: entries (pinned first), NPC filter chips, empty state, add button.
+function JournalSection({cfg,listKey,items,pred,onUpd,onDel,onToggle,onAdd,extraTop,extraRows}){
+  const ed=useEditSet();
+  const [flt,setFlt]=React.useState("all");
+  var rows=(items||[]).map(function(it,i){return {it:it,i:i};});
+  var counts={ally:0,enemy:0,neutral:0};
+  if(cfg.dispo) rows.forEach(function(x){var d=_J_DISPO[x.it.ty]?x.it.ty:"neutral";counts[d]++;});
+  var shown=rows.filter(function(x){return pred(x.it)&&(!cfg.dispo||flt==="all"||(_J_DISPO[x.it.ty]?x.it.ty:"neutral")===flt);});
+  shown.sort(function(a,b){
+    var pa=a.it.pin?1:0,pb=b.it.pin?1:0;
+    if(pa!==pb) return pb-pa;
+    if(cfg.cmp) return cfg.cmp(a,b);
+    if(cfg.session){var na=parseFloat(a.it.sn),nb=parseFloat(b.it.sn);na=isNaN(na)?-1:na;nb=isNaN(nb)?-1:nb;if(na!==nb) return nb-na;return b.i-a.i;}
+    return a.i-b.i;
+  });
+  var chip=function(key,label,n,col){var a=flt===key;
+    return <button key={key} type="button" onClick={function(){setFlt(key);}} style={{fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1.5,textTransform:"uppercase",padding:"4px 11px",borderRadius:9,cursor:"pointer",background:a?(col?col.bg:"rgba(201,150,42,.18)"):"rgba(0,0,0,.2)",border:"1px solid "+(a?(col?col.bd:"rgba(201,150,42,.5)"):"rgba(201,150,42,.15)"),color:a?(col?col.c:"var(--gold-l)"):"rgba(232,213,176,.45)"}}>{label} <span style={{opacity:.7}}>{n}</span></button>;};
+  // Timeline mode (cfg.timeline): newest first; extraRows are sessions ({k0,k1,node}) that adopt the events falling inside their dates
+  var ex=extraRows||[],feed;
+  if(cfg.timeline){
+    var K=window.__cal?window.__cal.key:null;
+    var groups=ex.map(function(r){return {r:r,kids:[]};}),loose=[];
+    shown.forEach(function(x){
+      var k=K?K(x.it):Infinity,home=null;
+      if(!x.it.pin&&k!==Infinity) groups.forEach(function(g){if(k>=g.r.k0&&k<=g.r.k1&&(!home||g.r.k0>home.r.k0))home=g;});
+      if(home) home.kids.push(x); else loose.push(x);
+    });
+    feed=loose.map(function(x){return {x:x};}).concat(groups.map(function(g){return {g:g};}));
+    var tk=function(m){if(m.g)return m.g.r.k1;var k=K?K(m.x.it):0;return k===Infinity?-Infinity:k;};
+    feed.sort(function(a,b){
+      var pa=a.x&&a.x.it.pin?1:0,pb=b.x&&b.x.it.pin?1:0;
+      if(pa!==pb) return pb-pa;
+      var ka=tk(a),kb=tk(b);
+      if(ka!==kb) return ka>kb?-1:1;
+      return a.g&&!b.g?-1:(b.g&&!a.g?1:0);
+    });
+  } else feed=shown.map(function(x){return {x:x};});
+  var empty=(items||[]).length===0&&ex.length===0;
+  return <div>
+    {extraTop}
+    {cfg.dispo&&!empty&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+      {chip("all","All",rows.length,null)}{chip("ally","Allies",counts.ally,_J_DISPO.ally)}{chip("enemy","Enemies",counts.enemy,_J_DISPO.enemy)}{chip("neutral","Neutral",counts.neutral,_J_DISPO.neutral)}
+    </div>}
+    {empty&&<div style={{textAlign:"center",padding:"22px 12px 8px",color:"rgba(184,154,240,.45)"}}>
+      <div style={{display:"flex",justifyContent:"center",marginBottom:8}}><JIcon name={cfg.icon} size={34} /></div>
+      <div style={{fontFamily:"'EB Garamond',serif",fontSize:14,fontStyle:"italic",color:"rgba(232,213,176,.45)"}}>{cfg.empty}</div>
+    </div>}
+    {!empty&&feed.length===0&&<div style={{textAlign:"center",padding:"14px 0",fontFamily:"'EB Garamond',serif",fontSize:14,fontStyle:"italic",color:"rgba(232,213,176,.4)"}}>Nothing matches.</div>}
+    {(function(){
+      var entry=function(x,compact){
+        return <JournalEntry key={x.i} cfg={cfg} it={x.it} i={x.i} k={"jn-"+listKey+"-"+x.i} ed={ed} dflt={compact?false:undefined}
+          onUpd={function(f,v){onUpd(x.i,f,v);}} onDel={function(){window.__confirm("Delete this "+cfg.single+"?",function(){ed.clear("jn-"+listKey+"-");onDel(x.i);});}} onToggle={compact?function(){onUpd(x.i,"showDesc",x.it.showDesc===undefined?true:x.it.showDesc===false);}:function(){onToggle(x.i);}} />;
+      };
+      var out=feed.map(function(m,mi){
+        var node=m.g
+          ?<div key={"g"+mi}>{React.cloneElement(m.g.r.node,{n:m.g.kids.length})}
+            {m.g.kids.length>0&&<div style={{marginLeft:14,paddingLeft:10,borderLeft:"2px solid rgba(123,79,207,.35)"}}>{m.g.kids.map(function(x){return entry(x,true);})}</div>}
+          </div>
+          :entry(m.x);
+        if(!cfg.timeline) return node;
+        var col=m.g?"rgba(123,79,207,.9)":"rgba(74,156,92,.9)";
+        return <div key={"t"+mi} style={{position:"relative"}}><span style={{position:"absolute",left:-21,top:15,width:9,height:9,borderRadius:"50%",boxSizing:"border-box",background:"#1a1410",border:"2px solid "+col}} />{node}</div>;
+      });
+      if(!cfg.timeline||!out.length) return out;
+      return <div style={{position:"relative",paddingLeft:22}}><span style={{position:"absolute",left:4,top:12,bottom:12,width:2,background:"rgba(201,150,42,.22)"}} />{out}</div>;
+    })()}
+    <button className="arb" onClick={function(){var r=onAdd(items||[],ed);}}>{cfg.addLabel}</button>
+  </div>;
+}
+var _JCFG={
+  npc:{icon:"user",color:"rgba(184,154,240,.6)",t:"nm",tp:"Name...",s:"rl",sp:"Role / Relation...",b:"nt",bp:"Notes... (markdown supported)",single:"NPC",dispo:true,addLabel:"+ Add NPC",empty:"No NPCs yet. Add the people your character meets."},
+  locations:{icon:"pin",color:"rgba(96,180,196,.6)",t:"nm",tp:"Location name...",s:"rg",sp:"Region / Type...",b:"nt",bp:"Notes... (markdown supported)",single:"location",addLabel:"+ Add Location",empty:"No locations yet. Record the places you have been."},
+  lore:{icon:"book",color:"rgba(201,150,42,.5)",t:"ti",tp:"Title or subject...",b:"tx",bp:"Lore, history, world details... (markdown supported)",single:"lore entry",addLabel:"+ Add Lore",empty:"No lore yet. Keep the history and secrets you uncover."},
+  factions:{icon:"shield",color:"rgba(201,74,42,.5)",t:"nm",tp:"Faction name...",s:"rl",sp:"Relation / Rank...",b:"nt",bp:"Notes... (markdown supported)",single:"faction",addLabel:"+ Add Faction",empty:"No organisations yet. Track the guilds, orders and factions you meet."},
+  nt1:{icon:"quill",color:"rgba(123,79,207,.6)",t:"ti",tp:"Session title...",b:"tx",bp:"What happened this session... (markdown supported)",single:"session",session:true,addLabel:"+ Add Session",empty:"No sessions yet. Add one to start your campaign log."},
+  nt3:{icon:"note",color:"rgba(42,140,156,.5)",t:"ti",tp:"Title or topic...",b:"tx",bp:"Notes... (markdown supported)",single:"note",addLabel:"+ Add Note",empty:"No notes yet."},
+  ev:{icon:"cal",color:"rgba(74,156,92,.55)",t:"ti",tp:"Event title...",b:"tx",bp:"What happened... (markdown supported)",single:"event",ev:true,timeline:true,addLabel:"+ Add Event",empty:"No events yet. Log what happened and when; sessions with an in-world date appear here too.",
+    cmp:function(a,b){var K=window.__cal?window.__cal.key:null,ka=K?K(a.it):0,kb=K?K(b.it):0;if(ka!==kb){if(ka===Infinity)return 1;if(kb===Infinity)return -1;return ka>kb?-1:1;}return b.i-a.i;}},
+  cs:{icon:"note",color:"rgba(184,154,240,.5)",t:"ti",tp:"Title or topic...",b:"tx",bp:"Notes... (markdown supported)",single:"entry",addLabel:"+ Add Entry",empty:"Nothing here yet."}
+};
+// Jot a line into the newest session without opening anything.
+function SessionQuickNote({items,onAppend}){
+  const [v,setV]=React.useState("");
+  var go=function(){var x=v.trim();if(!x) return;onAppend(x);setV("");};
+  return <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
+    <input className="fi" value={v} onChange={function(e){setV(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"){e.preventDefault();go();}}}
+      placeholder={(items||[]).length?"Quick note; Enter adds it to the latest session":"Quick note; Enter starts Session 1"} style={{flex:1,background:"rgba(0,0,0,.3)",border:"1px solid rgba(123,79,207,.3)",borderRadius:2,padding:"7px 10px"}} />
+    <button type="button" className="arb" onClick={go} style={{margin:0,flexShrink:0}}>Add</button>
+  </div>;
+}
+
+// ─── Campaign calendar (Codex → Calendar) ───────────────────────────────────────
+// A custom in-world calendar (Harptos by default): the current date and time, a month grid, an event log,
+// and in-world start/end dates on session notes. Stored in notes.cal = {cfg, now} and notes.calEvents (all optional).
+// Dates are {y, p, d, h?, mi?}: year, period id, day of the period (1-based), optional time.
+// A period is {id, n, d, fest?, leap?}: a month, or a festival day (fest = no weekday) that exists only every `leap` years.
+function _calDef(){return {suffix:"DR",start:0,week:["1st","2nd","3rd","4th","5th","6th","7th","8th","9th","10th"],periods:[
+  {id:"ham",n:"Hammer",d:30},{id:"mwi",n:"Midwinter",d:1,fest:true},{id:"alt",n:"Alturiak",d:30},{id:"che",n:"Ches",d:30},{id:"tar",n:"Tarsakh",d:30},
+  {id:"grg",n:"Greengrass",d:1,fest:true},{id:"mir",n:"Mirtul",d:30},{id:"kyt",n:"Kythorn",d:30},{id:"fla",n:"Flamerule",d:30},
+  {id:"msm",n:"Midsummer",d:1,fest:true},{id:"shm",n:"Shieldmeet",d:1,fest:true,leap:4},{id:"els",n:"Eleasis",d:30},{id:"elt",n:"Eleint",d:30},
+  {id:"hhv",n:"Highharvestide",d:1,fest:true},{id:"mar",n:"Marpenoth",d:30},{id:"ukt",n:"Uktar",d:30},{id:"fom",n:"Feast of the Moon",d:1,fest:true},{id:"nig",n:"Nightal",d:30}]};}
+function _calCfg(c){var cf=c&&c.cal&&c.cal.cfg;return (cf&&Array.isArray(cf.periods)&&cf.periods.length&&Array.isArray(cf.week)&&cf.week.length)?cf:_calDef();}
+function calYearPeriods(cfg,y){return cfg.periods.filter(function(p){return !(p.leap>0)||(y%p.leap===0);});}
+function _calLeapN(y,N){return y>0?Math.floor((y-1)/N)+1:0;}
+function _calYearStart(cfg,y,nf){var t=0;cfg.periods.forEach(function(p){if(nf&&p.fest)return;t+=(p.leap>0?_calLeapN(y,p.leap):y)*p.d;});return t;}
+function calAbs(cfg,dt,nf){
+  var t=_calYearStart(cfg,dt.y,nf),ps=calYearPeriods(cfg,dt.y);
+  for(var i=0;i<ps.length;i++){if(ps[i].id===dt.p)break;if(!(nf&&ps[i].fest))t+=ps[i].d;}
+  return t+(dt.d-1);
+}
+function calWeekday(cfg,dt){
+  var p=cfg.periods.find(function(x){return x.id===dt.p;});if(!p||p.fest)return null;
+  var W=cfg.week.length||1,n=calAbs(cfg,dt,true)+(parseInt(cfg.start)||0);
+  return ((n%W)+W)%W;
+}
+function calFromAbs(cfg,abs){
+  abs=Math.max(0,abs);
+  var avg=cfg.periods.reduce(function(s,p){return s+p.d/(p.leap>0?p.leap:1);},0)||1;
+  var y=Math.max(0,Math.floor(abs/avg));
+  while(y>0&&_calYearStart(cfg,y,false)>abs)y--;
+  while(_calYearStart(cfg,y+1,false)<=abs)y++;
+  var rem=abs-_calYearStart(cfg,y,false),ps=calYearPeriods(cfg,y);
+  for(var i=0;i<ps.length;i++){if(rem<ps[i].d)return {y:y,p:ps[i].id,d:rem+1};rem-=ps[i].d;}
+  return {y:y,p:ps[ps.length-1].id,d:ps[ps.length-1].d};
+}
+function calToMin(cfg,dt){return calAbs(cfg,dt,false)*1440+(dt.h||0)*60+(dt.mi||0);}
+function calFromMin(cfg,m){m=Math.max(0,m);var a=Math.floor(m/1440),r=m-a*1440,dt=calFromAbs(cfg,a);dt.h=Math.floor(r/60);dt.mi=r%60;return dt;}
+function calAdd(cfg,dt,mins){return calFromMin(cfg,calToMin(cfg,dt)+mins);}
+function calNorm(cfg,dt){
+  var y=Math.max(0,parseInt(dt&&dt.y)||0),ps=calYearPeriods(cfg,y);
+  var p=ps.find(function(x){return x.id===(dt&&dt.p);})||ps[0];
+  var o={y:y,p:p.id,d:Math.max(1,Math.min(p.d,parseInt(dt&&dt.d)||1))};
+  if(dt&&dt.h!=null&&dt.h!==""){o.h=Math.max(0,Math.min(23,parseInt(dt.h)||0));o.mi=Math.max(0,Math.min(59,parseInt(dt.mi)||0));}
+  return o;
+}
+function calFmt(cfg,dt,wk){
+  if(!dt||dt.y==null)return "";
+  var p=cfg.periods.find(function(x){return x.id===dt.p;}),nm=p?p.n:"?";
+  var s=(p&&p.fest&&p.d===1)?nm:(dt.d+" "+nm);
+  s+=", "+dt.y+(cfg.suffix?" "+cfg.suffix:"");
+  if(wk&&p){var w=calWeekday(cfg,dt);if(w!=null)s=cfg.week[w]+" · "+s;}
+  return s;
+}
+function calTime(dt){var z=function(n){return (n<10?"0":"")+n;};return dt&&dt.h!=null?z(dt.h)+":"+z(dt.mi||0):"";}
+function calPhase(dt){var h=dt&&dt.h!=null?dt.h:12;return h<5?"Night":h<8?"Dawn":h<17?"Day":h<20?"Dusk":"Night";}
+function _calApi(cfg,now){
+  var fmt=function(dt,wk){return calFmt(cfg,dt,wk);};
+  var pt=function(dt){return dt&&dt.y!=null?fmt(dt)+(dt.h!=null?" "+calTime(dt):""):"";};
+  return {cfg:cfg,now:now,fmt:fmt,pt:pt,
+    evSub:function(it){return it.y==null?"No date set":pt(it);},
+    key:function(it){return it.y==null?Infinity:calToMin(cfg,calNorm(cfg,it));},
+    range:function(it){
+      var a=it.cs&&it.cs.y!=null?it.cs:null,b=it.ce&&it.ce.y!=null?it.ce:null;
+      if(a&&b){var A=pt(a),B=pt(b);return A===B?A:A+" → "+B;}
+      return a?"from "+pt(a):b?"until "+pt(b):"";
+    }};
+}
+
+// Day / month / year / (time) fields for one in-world date. onChange gets the new date object.
+function CalDateEdit({label,value,onChange,withTime,clearable}){
+  var cal=window.__cal;if(!cal)return null;
+  var cfg=cal.cfg,v=value&&value.y!=null?value:null;
+  var set=function(patch){
+    var nv=calNorm(cfg,Object.assign({},v||cal.now,patch));
+    if(patch.h===null){delete nv.h;delete nv.mi;}
+    onChange(nv);
+  };
+  var ps=calYearPeriods(cfg,v?v.y:cal.now.y);
+  var lblSt={fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",color:"rgba(232,213,176,.45)",flex:"0 0 auto"};
+  return <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",marginBottom:6}}>
+    {label&&<span style={lblSt}>{label}</span>}
+    <input className="fi" type="number" min="1" value={v?v.d:""} placeholder="Day" onChange={function(e){set({d:e.target.value});}} style={{width:58,flex:"0 0 58px"}} />
+    <select className="fi" value={v?v.p:""} onChange={function(e){set({p:e.target.value});}} style={{flex:"1 1 110px",minWidth:0,width:"auto"}}>
+      {!v&&<option value="">Month…</option>}
+      {ps.map(function(p){return <option key={p.id} value={p.id}>{p.n}</option>;})}
+    </select>
+    <input className="fi" type="number" min="0" value={v?v.y:""} placeholder="Year" onChange={function(e){set({y:e.target.value});}} style={{width:78,flex:"0 0 78px"}} />
+    {withTime&&<input className="fi" type="time" value={v&&v.h!=null?calTime(v):""} onChange={function(e){var m=/^(\d{1,2}):(\d{2})/.exec(e.target.value);if(m)set({h:+m[1],mi:+m[2]});else set({h:null});}} style={{width:104,flex:"0 0 104px"}} />}
+    <button type="button" className="arb" style={{margin:0}} onClick={function(){onChange(Object.assign({},cal.now));}}>Now</button>
+    {clearable&&v&&<button type="button" className="arb" style={{margin:0}} onClick={function(){onChange(null);}}>Clear</button>}
+  </div>;
+}
+function CalEventFields({it,onUpd}){
+  return <CalDateEdit withTime value={it} onChange={function(nv){["y","p","d","h","mi"].forEach(function(k){onUpd(k,nv[k]==null?null:nv[k]);});}} />;
+}
+function CalSessionFields({it,onUpd}){
+  return <div style={{marginBottom:6}}>
+    <CalDateEdit label="Starts" clearable withTime value={it.cs} onChange={function(nv){onUpd("cs",nv);}} />
+    <CalDateEdit label="Ends" clearable withTime value={it.ce} onChange={function(nv){onUpd("ce",nv);}} />
+  </div>;
+}
+
+// A session note shown in the calendar timeline (it has an in-world start and/or end date); click to open it.
+function CalSessionRow({it,i,n}){
+  var cal=window.__cal,sn=String(it.sn==null?"":it.sn).trim(),title=(it.ti||"").trim(),col="rgba(123,79,207,.6)";
+  return <div className="jc" onClick={function(){if(window.__jnGo)window.__jnGo({sec:"nt1",i:i,lk:"nt1"});}} title="Open this session note" style={{borderLeft:"3px solid "+col,cursor:"pointer"}}>
+    <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <div style={{width:32,height:32,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"radial-gradient(circle at 35% 30%, rgba(123,79,207,.33), rgba(0,0,0,.35))",border:"1px solid rgba(123,79,207,.55)",color:"rgba(184,154,240,.9)"}}><JIcon name="quill" size={16} /></div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:13,fontWeight:700,color:"var(--gold-l)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{(sn?"Session "+sn:"Session")+(title?": "+title:"")}</div>
+        <div style={{fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.55)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{(cal?cal.range(it):"")+(n?" · "+n+" event"+(n===1?"":"s"):"")}</div>
+      </div>
+      <span style={{fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1.5,textTransform:"uppercase",padding:"1px 7px",borderRadius:9,background:"rgba(123,79,207,.2)",border:"1px solid rgba(123,79,207,.45)",color:"rgba(184,154,240,.9)",flexShrink:0}}>Session</span>
+    </div>
+  </div>;
+}
+function CampaignCalendar({c,s,children,onAddEvent}){
+  const cal=window.__cal,cfg=cal.cfg,now=cal.now;
+  const [view,setView]=React.useState(null);
+  const [sel,setSel]=React.useState(null);
+  const [setOpen,setSetOpen]=React.useState(false);
+  const [cfgOpen,setCfgOpen]=React.useState(false);
+  const [qn,setQn]=React.useState("");
+  const [weekTxt,setWeekTxt]=React.useState(null);
+  const setCal=function(patch){s("cal",function(prev){return Object.assign({},prev||{},patch);});};
+  const setNow=function(nv){setCal({now:Object.assign({h:now.h,mi:now.mi},calNorm(cfg,nv))});};
+  const adv=function(mins){setCal({now:calAdd(cfg,now,mins)});};
+  const evs=c.calEvents||[];
+  const byDay={};evs.forEach(function(e){if(e.y==null)return;var k=e.y+"|"+e.p+"|"+e.d;(byDay[k]=byDay[k]||[]).push(e);});
+  const vw=view||{y:now.y,p:now.p};
+  const vps=calYearPeriods(cfg,vw.y);
+  var vi=vps.findIndex(function(p){return p.id===vw.p;});if(vi<0)vi=0;
+  const vp=vps[vi];
+  const go=function(dir){
+    if(dir<0){if(vi>0)setView({y:vw.y,p:vps[vi-1].id});else if(vw.y>0){var pp=calYearPeriods(cfg,vw.y-1);setView({y:vw.y-1,p:pp[pp.length-1].id});}}
+    else{if(vi<vps.length-1)setView({y:vw.y,p:vps[vi+1].id});else setView({y:vw.y+1,p:calYearPeriods(cfg,vw.y+1)[0].id});}
+  };
+  const W=cfg.week.length||1;
+  const first=vp.fest?0:calWeekday(cfg,{y:vw.y,p:vp.id,d:1});
+  const cells=[];for(var i=0;i<first;i++)cells.push(null);for(var d=1;d<=vp.d;d++)cells.push(d);
+  const isNow=function(d){return now.y===vw.y&&now.p===vp.id&&now.d===d;};
+  const isSel=function(d){return sel&&sel.y===vw.y&&sel.p===vp.id&&sel.d===d;};
+  const card={background:"rgba(0,0,0,.25)",border:"1px solid rgba(201,150,42,.15)",padding:"10px 14px",marginBottom:12};
+  const hd={fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1.5,textTransform:"uppercase",color:"rgba(232,213,176,.45)"};
+  const tb=function(label,fn,title){return <button key={label} type="button" title={title} onClick={fn} style={{flex:"1 1 0",minWidth:0,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:.5,textTransform:"uppercase",padding:"7px 2px",cursor:"pointer",borderRadius:2,background:"rgba(20,14,8,.8)",border:"1px solid rgba(201,150,42,.3)",color:"var(--gold-l)",whiteSpace:"nowrap"}}>{label}</button>;};
+  const wkDay=calWeekday(cfg,now);
+  const addNowEvent=function(){var t=qn.trim();if(!t)return;onAddEvent(Object.assign({ti:t,tx:""},now));setQn("");};
+  // ── settings helpers
+  const upCfg=function(fn){var cf=JSON.parse(JSON.stringify(cfg));fn(cf);setCal({cfg:cf});};
+  const usedP=function(id){return evs.some(function(e){return e.p===id;});};
+  const small={fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",cursor:"pointer",borderRadius:2,userSelect:"none",padding:"3px 7px",border:"1px solid rgba(201,150,42,.3)",background:"transparent",color:"var(--gold-l)"};
+  return <div>
+    <div style={card}>
+      <div style={hd}>Now</div>
+      <div style={{display:"flex",alignItems:"baseline",gap:12,flexWrap:"wrap",margin:"4px 0 10px"}}>
+        <span style={{fontFamily:"'Cinzel',serif",fontSize:20,fontWeight:700,color:"var(--gold-l)"}}>{calFmt(cfg,now)}</span>
+        <span style={{fontFamily:"'EB Garamond',serif",fontSize:15,fontStyle:"italic",color:"rgba(232,213,176,.7)"}}>{(wkDay!=null?cfg.week[wkDay]+" day · ":"")+calTime(now)+" · "+calPhase(now)}</span>
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:6}}>
+        {tb("+10 min",function(){adv(10);})}{tb("+1 hour",function(){adv(60);})}{tb("+8 hours",function(){adv(480);},"Long rest")}{tb("+1 day",function(){adv(1440);})}{tb("+1 week",function(){adv(1440*W);},"One week of the calendar")}
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:10}}>
+        {tb("−10 min",function(){adv(-10);})}{tb("−1 hour",function(){adv(-60);})}{tb("−8 hours",function(){adv(-480);})}{tb("−1 day",function(){adv(-1440);})}{tb(setOpen?"Close":"Set…",function(){setSetOpen(!setOpen);},"Set the date and time directly")}
+      </div>
+      {setOpen&&<CalDateEdit withTime value={now} onChange={function(nv){setNow(nv);}} />}
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <input className="fi" value={qn} onChange={function(e){setQn(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"){e.preventDefault();addNowEvent();}}} placeholder="Log an event now; Enter adds it at this date and time" style={{flex:1,background:"rgba(0,0,0,.3)",border:"1px solid rgba(74,156,92,.35)",borderRadius:2,padding:"7px 10px"}} />
+        <button type="button" className="arb" onClick={addNowEvent} style={{margin:0,flexShrink:0}}>Add</button>
+      </div>
+    </div>
+    <div style={card}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+        <button type="button" style={small} onClick={function(){go(-1);}}>‹</button>
+        <span style={{flex:1,textAlign:"center",fontFamily:"'Cinzel',serif",fontSize:13,fontWeight:700,color:"var(--gold-l)"}}>{vp.n+", "+vw.y+(cfg.suffix?" "+cfg.suffix:"")}</span>
+        <button type="button" style={small} onClick={function(){setView(null);}}>Today</button>
+        <button type="button" style={small} onClick={function(){go(1);}}>›</button>
+      </div>
+      {!vp.fest&&<div style={{display:"grid",gridTemplateColumns:"repeat("+W+",minmax(0,1fr))",gap:3,marginBottom:3}}>
+        {cfg.week.map(function(n,i){return <div key={i} style={{textAlign:"center",fontFamily:"'Cinzel',serif",fontSize:8,color:"rgba(232,213,176,.4)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(""+n).slice(0,3)}</div>;})}
+      </div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat("+W+",minmax(0,1fr))",gap:3}}>
+        {cells.map(function(d,i){
+          if(d==null)return <div key={"b"+i} />;
+          var evn=(byDay[vw.y+"|"+vp.id+"|"+d]||[]).length,today=isNow(d),sl=isSel(d);
+          return <div key={d} onClick={function(){setSel({y:vw.y,p:vp.id,d:d});}} title={evn?evn+" event"+(evn===1?"":"s"):""}
+            style={{cursor:"pointer",minHeight:34,borderRadius:2,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,userSelect:"none",fontFamily:"'Cinzel',serif",fontSize:11,
+              background:today?"var(--gold)":"rgba(0,0,0,.3)",color:today?"#1a1410":"var(--parch)",border:"1px solid "+(sl?"var(--gold-l)":"rgba(201,150,42,.15)"),boxShadow:sl?"0 0 0 1px var(--gold-l)":"none"}}>
+            {d}<span style={{width:5,height:5,borderRadius:"50%",background:evn?(today?"#1a1410":"rgba(74,156,92,.9)"):"transparent"}} /></div>;
+        })}
+      </div>
+      {sel&&<div style={{marginTop:10,paddingTop:8,borderTop:"1px solid rgba(201,150,42,.15)"}}>
+        <div style={{fontFamily:"'EB Garamond',serif",fontSize:14,color:"var(--gold-l)",marginBottom:4}}>{calFmt(cfg,sel,true)}</div>
+        {(byDay[sel.y+"|"+sel.p+"|"+sel.d]||[]).map(function(e,i){return <div key={i} style={{fontFamily:"'EB Garamond',serif",fontSize:14,color:"var(--parch)"}}>{(e.h!=null?calTime(e)+" · ":"")+(e.ti||"Untitled")}</div>;})}
+        <div style={{display:"flex",gap:8,marginTop:6,flexWrap:"wrap"}}>
+          <button type="button" className="arb" style={{margin:0}} onClick={function(){setNow(Object.assign({},sel));}}>Set as today</button>
+          <button type="button" className="arb" style={{margin:0}} onClick={function(){onAddEvent({ti:"",tx:"",y:sel.y,p:sel.p,d:sel.d});}}>+ Event here</button>
+        </div>
+      </div>}
+    </div>
+    <div className="sh"><JIcon name="cal" size={15} /> Timeline</div>
+    {children}
+    <div style={{marginTop:18}}>
+      <button type="button" className="arb" onClick={function(){setCfgOpen(!cfgOpen);}}>{cfgOpen?"− Calendar settings":"+ Calendar settings"}</button>
+      {cfgOpen&&<div style={Object.assign({},card,{marginTop:10})}>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:8}}>
+          <label style={{flex:"1 1 120px"}}><div style={hd}>Year suffix</div><input className="fi" value={cfg.suffix||""} onChange={function(e){var v=e.target.value;upCfg(function(cf){cf.suffix=v;});}} /></label>
+          <label style={{flex:"1 1 200px"}}><div style={hd}>Weekday names (comma separated)</div>
+            <input className="fi" value={weekTxt!=null?weekTxt:cfg.week.join(", ")} onChange={function(e){setWeekTxt(e.target.value);}}
+              onBlur={function(){if(weekTxt==null)return;var arr=weekTxt.split(",").map(function(x){return x.trim();}).filter(Boolean);setWeekTxt(null);if(arr.length)upCfg(function(cf){cf.week=arr;cf.start=Math.min(cf.start||0,arr.length-1);});}} /></label>
+          <label style={{flex:"0 0 110px"}}><div style={hd}>Year starts on</div>
+            <select className="fi" value={Math.min(parseInt(cfg.start)||0,W-1)} onChange={function(e){var v=parseInt(e.target.value);upCfg(function(cf){cf.start=v;});}}>{cfg.week.map(function(n,i){return <option key={i} value={i}>{n}</option>;})}</select></label>
+        </div>
+        <div style={hd}>Months and festival days, in order</div>
+        {cfg.periods.map(function(p,i){
+          return <div key={p.id} style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",margin:"5px 0"}}>
+            <input className="fi" value={p.n} onChange={function(e){var v=e.target.value;upCfg(function(cf){cf.periods[i].n=v;});}} style={{flex:"1 1 130px",minWidth:0,width:"auto"}} />
+            <input className="fi" type="number" min="1" value={p.d} title="Days" onChange={function(e){var v=Math.max(1,parseInt(e.target.value)||1);upCfg(function(cf){cf.periods[i].d=v;});}} style={{width:56,flex:"0 0 56px"}} />
+            <label title="Festival day: not part of a week" style={{display:"flex",alignItems:"center",gap:4,fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,color:"rgba(232,213,176,.5)",textTransform:"uppercase"}}><input type="checkbox" checked={!!p.fest} onChange={function(e){var v=e.target.checked;upCfg(function(cf){cf.periods[i].fest=v;});}} />Fest</label>
+            <input className="fi" type="number" min="0" value={p.leap||""} placeholder="Leap" title="Only in years divisible by this" onChange={function(e){var v=parseInt(e.target.value)||0;upCfg(function(cf){if(v>1)cf.periods[i].leap=v;else delete cf.periods[i].leap;});}} style={{width:56,flex:"0 0 56px"}} />
+            <button type="button" style={small} disabled={i===0} onClick={function(){upCfg(function(cf){var t=cf.periods[i];cf.periods[i]=cf.periods[i-1];cf.periods[i-1]=t;});}}>↑</button>
+            <button type="button" style={small} disabled={i===cfg.periods.length-1} onClick={function(){upCfg(function(cf){var t=cf.periods[i];cf.periods[i]=cf.periods[i+1];cf.periods[i+1]=t;});}}>↓</button>
+            <button className="db" disabled={cfg.periods.length<2} onClick={function(){window.__confirm("Remove \""+p.n+"\" from the calendar?"+(usedP(p.id)?"\nEvents on it will lose their date.":""),function(){upCfg(function(cf){cf.periods.splice(i,1);});});}}>x</button>
+          </div>;
+        })}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
+          <button type="button" className="arb" style={{margin:0}} onClick={function(){upCfg(function(cf){cf.periods.push({id:"p"+Date.now().toString(36),n:"New month",d:30});});}}>+ Add period</button>
+          <button type="button" className="arb" style={{margin:0}} onClick={function(){window.__confirm("Reset the calendar to Harptos? Events keep their dates where the months still exist.",function(){setCal({cfg:_calDef()});},"Reset");}}>Reset to Harptos</button>
+        </div>
+        <div style={{fontFamily:"'EB Garamond',serif",fontSize:12,fontStyle:"italic",color:"rgba(232,213,176,.4)",marginTop:8,lineHeight:1.4}}>Days: how many days the month has. Fest: a festival day with no weekday. Leap: the period only exists in years divisible by that number (Shieldmeet: 4).</div>
+      </div>}
+    </div>
+  </div>;
+}
+
 function Page4({c,s}){
   const ui=(k,i,f,v)=>s(k,prev=>{const a=[...prev];a[i]={...a[i],[f]:v};return a;});
   const di=(k,i)=>s(k,prev=>prev.filter((_,j)=>j!==i));
@@ -5661,21 +6163,55 @@ function Page4({c,s}){
   const toggleDesc=(k,i)=>s(k,prev=>(prev||[]).map((it,j)=>j===i?{...it,showDesc:it.showDesc===false}:it));
   const ecBtn={cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:9,color:"rgba(184,154,240,.5)",border:"1px solid rgba(184,154,240,.2)",padding:"0 6px",borderRadius:2,userSelect:"none",lineHeight:"15px"};
   const chevSt={cursor:"pointer",flexShrink:0,fontFamily:"'Cinzel',serif",fontSize:12,color:"rgba(184,154,240,.55)",userSelect:"none",alignSelf:"flex-start",paddingTop:6,width:12,textAlign:"center"};
-  const descBtns=(k)=>((c[k]||[]).length>0?<span style={{display:"inline-flex",gap:3}}>
-    <span onClick={()=>setAllDesc(k,true)} title="Expand all" style={ecBtn}>+</span>
-    <span onClick={()=>setAllDesc(k,false)} title="Collapse all" style={ecBtn}>−</span>
-  </span>:null);
+  const descBtns=(k)=>null;
   const mdPreview=(t)=>((t||"").replace(/[*_#>`~]/g," ").replace(/\s+/g," ").trim());
   const collapsedRow=(k,i,t)=><div onClick={()=>toggleDesc(k,i)} title="Show notes"
     style={{cursor:"pointer",color:"rgba(232,213,176,.3)",fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",padding:"4px 2px"}}>{mdPreview(t)||"(empty — click to add notes)"}</div>;
   const {useState:us}=React;
-  const [sub,setSub]=us("npc");
+  const [sub,setSub]=us("nt1");
   const [noteSearch,setNoteSearch]=us("");
   const nq=noteSearch.trim().toLowerCase();
-  const fIdx=(arr)=>(arr||[]).map(function(it,i){return {it:it,i:i};}).filter(function(x){
+  const jPred=function(it){
     if(!nq) return true;
-    try{return Object.keys(x.it).some(function(k){var v=x.it[k];return typeof v==="string"&&v.toLowerCase().indexOf(nq)>=0;});}catch(e){return true;}
-  });
+    try{return Object.keys(it).some(function(k){var v=it[k];return typeof v==="string"&&v.toLowerCase().indexOf(nq)>=0;});}catch(e){return true;}
+  };
+  // Names that @mentions can link to (rebuilt every render; read by <Markdown mentions> and the @ picker)
+  (function(){
+    var L=[],seen={};
+    var add=function(arr,field,sec,label,listKey,csid){(arr||[]).forEach(function(x,i){var nm=((x&&x[field])||"").trim();if(!nm) return;var lc=nm.toLowerCase();if(seen[lc]) return;seen[lc]=1;L.push({name:nm,lc:lc,ref:{sec:sec,i:i,label:label,lk:listKey,csid:csid}});});};
+    add(c.npc,"nm","npc","NPC","npc");add(c.locations,"nm","locations","Place","locations");add(c.lore,"ti","lore","Lore","lore");
+    add(c.factions,"nm","factions","Org","factions");add(c.nt1,"ti","nt1","Session","nt1");add(c.nt3,"ti","nt3","Note","nt3");
+    (c.customSections||[]).forEach(function(cs){add(cs.items,"ti","cs:"+cs.id,cs.name||"Note","cs"+cs.id,cs.id);});
+    L.sort(function(a,b){return b.lc.length-a.lc.length;});
+    window.__jnNames=L;
+  })();
+  // In-world calendar: config and current date (defaults to Harptos), read by the date fields and the session notes
+  var calCfg=_calCfg(c),calNow=calNorm(calCfg,Object.assign({y:1492,p:calCfg.periods[0].id,d:1,h:8,mi:0},(c.cal&&c.cal.now)||{}));
+  window.__cal=_calApi(calCfg,calNow);
+  // Follow a link: switch to the entry's section, open it, scroll to it and flash it.
+  window.__jnGo=function(ref){
+    setNoteSearch("");setSub(ref.sec);
+    if(ref.csid!=null){csUpd(ref.csid,function(cs){return {...cs,items:cs.items.map(function(it,j){return j===ref.i?{...it,showDesc:true}:it;})};});}
+    else s(ref.sec,function(prev){return (prev||[]).map(function(it,j){return j===ref.i?{...it,showDesc:true}:it;});});
+    var tries=0,seek=function(){
+      var el=document.querySelector('[data-jid="jn-'+ref.lk+'-'+ref.i+'"]');
+      if(el){el.scrollIntoView({behavior:"smooth",block:"center"});el.classList.remove("jflash");void el.offsetWidth;el.classList.add("jflash");}
+      else if(tries++<12) setTimeout(seek,60);
+    };
+    setTimeout(seek,80);
+  };
+  // Quick note: append a bullet to the newest session (or start Session 1).
+  const quickSession=function(text){
+    s("nt1",prev=>{
+      var a=[...(prev||[])];
+      if(!a.length) return [{ti:"",tx:"- "+text,sn:"1",dt:_jToday()}];
+      var bi=0,bn=-Infinity;
+      a.forEach(function(x,i){var n=parseFloat(x.sn);if(isNaN(n))n=-1;if(n>bn||(n===bn&&i>bi)){bn=n;bi=i;}});
+      var cur=a[bi].tx||"";
+      a[bi]={...a[bi],tx:cur+(cur&&!/\n$/.test(cur)?"\n":"")+"- "+text};
+      return a;
+    });
+  };
   // Custom user-defined sections — each {id, name, items:[{ti,tx,showDesc}]}
   const csList=c.customSections||[];
   const csUpd=(id,fn)=>s("customSections",(c.customSections||[]).map(cs=>cs.id===id?fn(cs):cs));
@@ -5684,25 +6220,26 @@ function Page4({c,s}){
   const csItemAdd=(id)=>csUpd(id,cs=>({...cs,items:[...(cs.items||[]),{ti:"",tx:""}]}));
   const csItemToggle=(id,i)=>csUpd(id,cs=>({...cs,items:cs.items.map((it,j)=>j===i?{...it,showDesc:it.showDesc===false}:it)}));
   const csSetAllDesc=(id,val)=>csUpd(id,cs=>({...cs,items:(cs.items||[]).map(it=>({...it,showDesc:val}))}));
-  const csDelete=(id)=>{s("customSections",(c.customSections||[]).filter(cs=>cs.id!==id));setSub("npc");};
+  const csDelete=(id)=>{s("customSections",(c.customSections||[]).filter(cs=>cs.id!==id));setSub("nt1");};
   const csAdd=()=>{var id=Date.now()+Math.random();s("customSections",[...(c.customSections||[]),{id:id,name:"New Section",items:[]}]);setSub("cs:"+id);};
-  const subTabs=[
-    {key:"npc",label:"NPCs",n:(c.npc||[]).length},
-    {key:"locations",label:"Locations",n:(c.locations||[]).length},
-    {key:"lore",label:"Lore",n:(c.lore||[]).length},
-    {key:"factions",label:"Organisations",n:(c.factions||[]).length},
-    {key:"nt1",label:"Session Notes",n:(c.nt1||[]).length},
-    {key:"nt3",label:"Other Notes",n:(c.nt3||[]).length},
-  ].concat(csList.map(function(cs){return {key:"cs:"+cs.id,label:cs.name||"Untitled",n:(cs.items||[]).length};}));
   // Expand/collapse every entry in the currently shown section (drives the far-left rail).
   const _curCs=sub.indexOf("cs:")===0?csList.find(function(x){return "cs:"+x.id===sub;}):null;
-  const ecAll=function(val){ if(_curCs) csSetAllDesc(_curCs.id,val); else setAllDesc(sub,val); };
-  const curCount=_curCs?(_curCs.items||[]).length:(c[sub]||[]).length;
+  const ecAll=function(val){ if(_curCs) csSetAllDesc(_curCs.id,val); else setAllDesc(sub==="calendar"?"calEvents":sub,val); };
+  const curCount=_curCs?(_curCs.items||[]).length:(c[sub==="calendar"?"calEvents":sub]||[]).length;
+  const subTabs=[
+    {key:"nt1",icon:"quill",label:"Sessions",n:(c.nt1||[]).length},
+    {key:"npc",icon:"user",label:"NPCs",n:(c.npc||[]).length},
+    {key:"locations",icon:"pin",label:"Locations",n:(c.locations||[]).length},
+    {key:"lore",icon:"book",label:"Lore",n:(c.lore||[]).length},
+    {key:"factions",icon:"shield",label:"Organisations",n:(c.factions||[]).length},
+    {key:"nt3",icon:"note",label:"Other Notes",n:(c.nt3||[]).length},
+    {key:"calendar",icon:"cal",label:"Calendar",n:(c.calEvents||[]).length},
+  ].concat(csList.map(function(cs){return {key:"cs:"+cs.id,icon:"note",label:cs.name||"Untitled",n:(cs.items||[]).length};}));
   return (
     <div>
       <EcRail show={curCount>0} onExpand={function(){ecAll(true);}} onCollapse={function(){ecAll(false);}} />
-      <div className="orn">Notes</div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:34,marginTop:14}}>
+      <div className="orn">Codex</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:34,marginTop:30}}>
         {subTabs.map(function(t){
           var active=sub===t.key;
           return <button key={t.key} onClick={function(){setSub(t.key);}}
@@ -5710,7 +6247,7 @@ function Page4({c,s}){
               background:active?"linear-gradient(135deg,rgba(123,79,207,.3),rgba(201,150,42,.15))":"rgba(20,14,8,.8)",
               border:"1px solid "+(active?"var(--gold)":"rgba(201,150,42,.25)"),
               color:active?"var(--gold-l)":"#a08c5a"}}>
-            {t.label}
+            <JIcon name={t.icon} size={13} />{t.label}
             <span style={{fontFamily:"'Cinzel',serif",fontSize:9,minWidth:16,textAlign:"center",padding:"1px 5px",borderRadius:9,
               background:active?"rgba(201,150,42,.25)":"rgba(0,0,0,.35)",
               color:active?"var(--gold-l)":"rgba(232,213,176,.45)",
@@ -5727,151 +6264,52 @@ function Page4({c,s}){
           style={{flex:1,maxWidth:360,background:"rgba(0,0,0,.3)",border:"none",borderBottom:"1px solid rgba(201,150,42,.25)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:14,padding:"5px 4px",outline:"none"}} />
         {noteSearch&&<span onClick={()=>setNoteSearch("")} title="Clear search" style={{cursor:"pointer",color:"rgba(201,74,42,.5)",fontSize:16,userSelect:"none"}}>×</span>}
       </div>
-      {sub==="npc"&&<div>
-      <div className="sh">NPCs</div>
-      {fIdx(c.npc).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
-        <div key={i} className="nc">
-          <span onClick={()=>toggleDesc("npc",i)} title={open?"Hide notes":"Show notes"} style={chevSt}>{open?"▾":"▸"}</span>
-          <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
-            {["ally","enemy","neutral"].map(function(t){
-              var active=n.ty===t;
-              return <div key={t} onClick={function(){ui("npc",i,"ty",t);}}
-                style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1.5,textTransform:"uppercase",padding:"3px 8px",
-                  background:active?(t==="ally"?"rgba(74,156,92,.2)":t==="enemy"?"rgba(201,74,42,.2)":"rgba(42,140,156,.2)"):"rgba(0,0,0,.2)",
-                  border:"1px solid "+(active?(t==="ally"?"rgba(74,156,92,.4)":t==="enemy"?"rgba(201,74,42,.4)":"rgba(42,140,156,.4)"):"rgba(201,150,42,.1)"),
-                  color:active?(t==="ally"?"#6dbb80":t==="enemy"?"#e07060":"#60b4c4"):"rgba(232,213,176,.25)",
-                  transition:"all .15s",userSelect:"none"}}>
-                {t}
-              </div>;
-            })}
-          </div>
-          <div style={{flex:1,minWidth:0}}>
-            <input className="fi" value={n.nm||""} onChange={e=>ui("npc",i,"nm",e.target.value)} placeholder="Name..." style={{marginBottom:6,width:"100%"}} />
-            <input className="fi" value={n.rl||""} onChange={e=>ui("npc",i,"rl",e.target.value)} placeholder="Role / Relation..." style={{marginBottom:6,width:"100%"}} />
-            {open
-              ?<MdField className="fi" value={n.nt||""} onChange={e=>ui("npc",i,"nt",e.target.value)} placeholder="Notes... (markdown supported)" style={{minHeight:64,width:"100%"}} />
-              :collapsedRow("npc",i,n.nt)}
-          </div>
-          <button className="db" onClick={()=>window.__confirm("Delete this NPC?",()=>di("npc",i))}>x</button>
-        </div>
-      );})}
-      <button className="arb" onClick={()=>ai("npc",{nm:"",rl:"",nt:"",ty:"neutral"})}>+ Add NPC</button>
-      </div>}
+      {[["nt1","Sessions"],["npc","NPCs"],["locations","Locations"],["lore","Lore"],["factions","Organisations"],["nt3","Other Notes"]].map(function(pr){
+        var key=pr[0];
+        if(sub!==key) return null;
+        var cfg=_JCFG[key];
+        return <div key={key} style={{position:"relative"}}>
+          <div className="sh"><JIcon name={cfg.icon} size={15} /> {pr[1]}</div>
+          <JournalSection cfg={cfg} listKey={key} items={c[key]} pred={function(it){return jPred(it);}}
+            onUpd={(i,f,v)=>ui(key,i,f,v)} onDel={(i)=>di(key,i)} onToggle={(i)=>toggleDesc(key,i)}
+            extraTop={key==="nt1"?<SessionQuickNote items={c.nt1} onAppend={quickSession} />:null}
+            onAdd={function(items,ed){
+              if(key==="nt1"){
+                var mx=0;items.forEach(function(x){var n=parseFloat(x.sn);if(!isNaN(n)&&n>mx)mx=n;});
+                ed.on("jn-nt1-"+items.length);
+                s("nt1",prev=>[...(prev||[]).map(x=>({...x,showDesc:false})),{ti:"",tx:"",sn:String(mx+1),dt:_jToday()}]);
+              } else if(key==="npc") ai("npc",{nm:"",rl:"",nt:"",ty:"neutral"});
+              else if(key==="locations") ai("locations",{nm:"",rg:"",nt:""});
+              else if(key==="factions") ai("factions",{nm:"",rl:"",nt:""});
+              else ai(key,{ti:"",tx:""});
+            }} />
+        </div>;
+      })}
 
-      {sub==="locations"&&<div>
-      <div className="sh">Locations</div>
-      {fIdx(c.locations).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
-        <div key={i} className="nc">
-          <span onClick={()=>toggleDesc("locations",i)} title={open?"Hide notes":"Show notes"} style={chevSt}>{open?"▾":"▸"}</span>
-          <div style={{flex:1,minWidth:0}}>
-            <input className="fi" value={n.nm||""} onChange={e=>ui("locations",i,"nm",e.target.value)} placeholder="Location name..." style={{marginBottom:6,width:"100%"}} />
-            <input className="fi" value={n.rg||""} onChange={e=>ui("locations",i,"rg",e.target.value)} placeholder="Region / Type..." style={{marginBottom:6,width:"100%"}} />
-            {open
-              ?<MdField className="fi" value={n.nt||""} onChange={e=>ui("locations",i,"nt",e.target.value)} placeholder="Notes... (markdown supported)" style={{minHeight:64,width:"100%"}} />
-              :collapsedRow("locations",i,n.nt)}
-          </div>
-          <button className="db" onClick={()=>window.__confirm("Delete this location?",()=>di("locations",i))}>x</button>
-        </div>
-      );})}
-      <button className="arb" onClick={()=>ai("locations",{nm:"",rg:"",nt:""})}>+ Add Location</button>
-      </div>}
-
-      {sub==="lore"&&<div>
-      <div className="sh">Lore</div>
-      {fIdx(c.lore).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
-        <div key={i} className="nc" style={{borderLeft:"3px solid rgba(201,150,42,.35)"}}>
-          <span onClick={()=>toggleDesc("lore",i)} title={open?"Hide notes":"Show notes"} style={chevSt}>{open?"▾":"▸"}</span>
-          <div style={{flex:1,minWidth:0}}>
-            <input className="fi" value={n.ti||""} onChange={e=>ui("lore",i,"ti",e.target.value)} placeholder="Title or subject..." style={{marginBottom:6,fontFamily:"'Cinzel',serif",fontSize:12,color:"var(--gold-l)"}} />
-            {open
-              ?<MdField className="fi" value={n.tx||""} onChange={e=>ui("lore",i,"tx",e.target.value)} placeholder="Lore, history, world details... (markdown supported)" style={{minHeight:64,width:"100%"}} />
-              :collapsedRow("lore",i,n.tx)}
-          </div>
-          <button className="db" onClick={()=>window.__confirm("Delete this lore entry?",()=>di("lore",i))}>x</button>
-        </div>
-      );})}
-      <button className="arb" onClick={()=>ai("lore",{ti:"",tx:""})}>+ Add Lore</button>
-      </div>}
-
-      {sub==="factions"&&<div>
-      <div className="sh">Organisations</div>
-      {fIdx(c.factions).map(function(x){var f=x.it,i=x.i;var open=f.showDesc!==false;return (
-        <div key={i} className="nc">
-          <span onClick={()=>toggleDesc("factions",i)} title={open?"Hide notes":"Show notes"} style={chevSt}>{open?"▾":"▸"}</span>
-          <div style={{flex:1,minWidth:0}}>
-            <input className="fi" value={f.nm||""} onChange={e=>{const a=[...(c.factions||[])];a[i]={...a[i],nm:e.target.value};s("factions",a);}} placeholder="Faction name..." style={{marginBottom:6,width:"100%"}} />
-            <input className="fi" value={f.rl||""} onChange={e=>{const a=[...(c.factions||[])];a[i]={...a[i],rl:e.target.value};s("factions",a);}} placeholder="Relation / Rank..." style={{marginBottom:6,width:"100%"}} />
-            {open
-              ?<MdField className="fi" value={f.nt||""} onChange={e=>{const a=[...(c.factions||[])];a[i]={...a[i],nt:e.target.value};s("factions",a);}} placeholder="Notes... (markdown supported)" style={{minHeight:64,width:"100%"}} />
-              :collapsedRow("factions",i,f.nt)}
-          </div>
-          <button className="db" onClick={()=>{window.__confirm("Delete this faction?",()=>s("factions",(c.factions||[]).filter((_,j)=>j!==i)));}}>x</button>
-        </div>
-      );})}
-      <button className="arb" onClick={()=>s("factions",[...(c.factions||[]),{nm:"",rl:"",nt:""}])}>+ Add Faction</button>
-      </div>}
-
-      {sub==="nt1"&&<div>
-      <div className="sh">Session Notes</div>
-      <div style={{marginBottom:6}}>
-        {fIdx(c.nt1).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
-          <div key={i} className="nc" style={{borderLeft:"3px solid rgba(123,79,207,.4)"}}>
-            <span onClick={()=>toggleDesc("nt1",i)} title={open?"Hide notes":"Show notes"} style={chevSt}>{open?"▾":"▸"}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <input className="fi" value={n.ti||""} onChange={e=>ui("nt1",i,"ti",e.target.value)} placeholder="Session title or date..." style={{marginBottom:6,fontFamily:"'Cinzel',serif",fontSize:12,color:"var(--arcane-l)"}} />
-              {open
-                ?<MdField className="fi" value={n.tx||""} onChange={e=>ui("nt1",i,"tx",e.target.value)} placeholder="What happened this session... (markdown supported)" style={{minHeight:60}} />
-                :collapsedRow("nt1",i,n.tx)}
-            </div>
-            <button className="db" onClick={()=>window.__confirm("Delete this note?",()=>di("nt1",i))}>x</button>
-          </div>
-        );})}
-        <button className="arb" onClick={()=>ai("nt1",{ti:"",tx:""})}>+ Add Session Note</button>
-      </div>
-      </div>}
-
-      {sub==="nt3"&&<div>
-      <div className="sh">Other Notes</div>
-      <div style={{marginBottom:6}}>
-        {fIdx(c.nt3).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
-          <div key={i} className="nc" style={{borderLeft:"3px solid rgba(42,140,156,.3)"}}>
-            <span onClick={()=>toggleDesc("nt3",i)} title={open?"Hide notes":"Show notes"} style={chevSt}>{open?"▾":"▸"}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <input className="fi" value={n.ti||""} onChange={e=>ui("nt3",i,"ti",e.target.value)} placeholder="Title or topic..." style={{marginBottom:6,fontFamily:"'Cinzel',serif",fontSize:12,color:"rgba(96,180,196,.8)"}} />
-              {open
-                ?<MdField className="fi" value={n.tx||""} onChange={e=>ui("nt3",i,"tx",e.target.value)} placeholder="Notes... (markdown supported)" style={{minHeight:64}} />
-                :collapsedRow("nt3",i,n.tx)}
-            </div>
-            <button className="db" onClick={()=>window.__confirm("Delete this note?",()=>di("nt3",i))}>x</button>
-          </div>
-        );})}
-        <button className="arb" onClick={()=>ai("nt3",{ti:"",tx:""})}>+ Add Note</button>
-      </div>
+      {sub==="calendar"&&<div key="calendar" style={{position:"relative"}}>
+        <div className="sh"><JIcon name="cal" size={15} /> Calendar</div>
+        <CampaignCalendar c={c} s={s} onAddEvent={function(row){ai("calEvents",row);}}>
+          <JournalSection cfg={_JCFG.ev} listKey="calEvents" items={c.calEvents} pred={function(it){return jPred(it);}}
+            extraRows={(c.nt1||[]).map(function(it,i){return {it:it,i:i};}).filter(function(x){return ((x.it.cs&&x.it.cs.y!=null)||(x.it.ce&&x.it.ce.y!=null))&&jPred(x.it);}).map(function(x){var cl=window.__cal,a=(x.it.cs&&x.it.cs.y!=null)?x.it.cs:x.it.ce,b=(x.it.ce&&x.it.ce.y!=null)?x.it.ce:a,k0=cl.key(a),k1=cl.key(b)+(b.h==null?1439:0);if(k1<k0)k1=k0;return {k0:k0,k1:k1,node:<CalSessionRow key={"sr"+x.i} it={x.it} i={x.i} />};})}
+            onUpd={(i,f,v)=>ui("calEvents",i,f,v)} onDel={(i)=>di("calEvents",i)} onToggle={(i)=>toggleDesc("calEvents",i)}
+            onAdd={function(){ai("calEvents",Object.assign({ti:"",tx:""},calNow));}} />
+        </CampaignCalendar>
       </div>}
 
       {csList.map(function(cs){
         if(sub!=="cs:"+cs.id) return null;
         var items=cs.items||[];
-        return <div key={cs.id}>
+        return <div key={cs.id} style={{position:"relative"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:26,marginBottom:14}}>
+            <JIcon name="note" size={15} color="var(--gold)" />
             <input value={cs.name||""} onChange={e=>csUpd(cs.id,function(x){return {...x,name:e.target.value};})} placeholder="Section name..."
               style={{minWidth:140,maxWidth:"60vw",background:"transparent",border:"none",borderBottom:"1px solid rgba(201,150,42,.35)",color:"var(--gold)",fontFamily:"'Cinzel',serif",fontSize:12,fontWeight:600,letterSpacing:3,textTransform:"uppercase",outline:"none",padding:"2px 0"}} />
             <button onClick={()=>window.__confirm("Delete the whole \""+(cs.name||"Untitled")+"\" section and all its notes?",()=>csDelete(cs.id))} title="Delete this section"
               style={{cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,textTransform:"uppercase",color:"rgba(201,74,42,.6)",background:"transparent",border:"1px solid rgba(201,74,42,.3)",padding:"2px 7px",borderRadius:2,flexShrink:0}}>Delete</button>
           </div>
-          {fIdx(items).map(function(x){var n=x.it,i=x.i;var open=n.showDesc!==false;return (
-            <div key={i} className="nc" style={{borderLeft:"3px solid rgba(184,154,240,.4)"}}>
-              <span onClick={()=>csItemToggle(cs.id,i)} title={open?"Hide notes":"Show notes"} style={chevSt}>{open?"▾":"▸"}</span>
-              <div style={{flex:1,minWidth:0}}>
-                <input className="fi" value={n.ti||""} onChange={e=>csItemUI(cs.id,i,"ti",e.target.value)} placeholder="Title or topic..." style={{marginBottom:6,fontFamily:"'Cinzel',serif",fontSize:12,color:"var(--arcane-l)"}} />
-                {open
-                  ?<MdField className="fi" value={n.tx||""} onChange={e=>csItemUI(cs.id,i,"tx",e.target.value)} placeholder="Notes... (markdown supported)" style={{minHeight:64,width:"100%"}} />
-                  :<div onClick={()=>csItemToggle(cs.id,i)} title="Show notes" style={{cursor:"pointer",color:"rgba(232,213,176,.3)",fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",padding:"4px 2px"}}>{mdPreview(n.tx)||"(empty — click to add notes)"}</div>}
-              </div>
-              <button className="db" onClick={()=>window.__confirm("Delete this entry?",()=>csItemDel(cs.id,i))}>x</button>
-            </div>
-          );})}
-          <button className="arb" onClick={()=>csItemAdd(cs.id)}>+ Add Entry</button>
+          <JournalSection cfg={_JCFG.cs} listKey={"cs"+cs.id} items={items} pred={function(it){return jPred(it);}}
+            onUpd={(i,f,v)=>csItemUI(cs.id,i,f,v)} onDel={(i)=>csItemDel(cs.id,i)} onToggle={(i)=>csItemToggle(cs.id,i)}
+            onAdd={function(){csItemAdd(cs.id);}} />
         </div>;
       })}
     </div>
@@ -7160,7 +7598,7 @@ function ToolFrame({tool,active}){
 }
 
 function App(){
-  const NOTE_KEYS=["npc","locations","lore","factions","nt1","nt3","customSections"];
+  const NOTE_KEYS=["npc","locations","lore","factions","nt1","nt3","customSections","calEvents"];
   const [tab,setTab]=useState("combat");
   const [notes,setNotes]=useState({npc:[],locations:[],lore:[],factions:[],nt1:[],nt3:[],customSections:[]});
   const [combat,setCombat]=useState({round:1,turnId:null,started:false,combatants:[]});
@@ -7288,7 +7726,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.28.1</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.33.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
