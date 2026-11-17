@@ -267,7 +267,7 @@ function _mdInline(text){
 function _mdRenderInline(tokens,kp){
   return tokens.map(function(tok,idx){
     var key=kp+"-"+idx;
-    if(tok.t==="text") return tok.v;
+    if(tok.t==="text") return _glossLinks(tok.v,key);
     if(tok.t==="code") return <code key={key} style={{fontFamily:"monospace",fontSize:"0.85em",background:"rgba(201,150,42,.12)",padding:"0 3px",borderRadius:2}}>{tok.v}</code>;
     if(tok.t==="b") return <strong key={key}>{_mdRenderInline(tok.children,key)}</strong>;
     if(tok.t==="i") return <em key={key}>{_mdRenderInline(tok.children,key)}</em>;
@@ -3758,7 +3758,6 @@ const WEAPON_DATA={
   ],
   "Martial Melee":[
     {n:"Battleaxe",dmg:"1d8 Slashing",prop:"Versatile (1d10)",mast:"Topple",wt:"4 lb.",cost:"10 GP"},
-    {n:"Double-Bladed Scimitar",dmg:"2d4 Slashing",prop:"Special*, Two-Handed",mast:"Graze",wt:"6 lb.",cost:"100 GP",special:"*Special. If you attack with a double-bladed scimitar as part of the Attack action on your turn, you can use a bonus action immediately after to make a melee attack with it. This attack deals 1d4 slashing damage on a hit, instead of 2d4."},
     {n:"Flail",dmg:"1d8 Bludgeoning",prop:"—",mast:"Sap",wt:"2 lb.",cost:"10 GP"},
     {n:"Glaive",dmg:"1d10 Slashing",prop:"Heavy, Reach, Two-Handed",mast:"Graze",wt:"6 lb.",cost:"20 GP"},
     {n:"Greataxe",dmg:"1d12 Slashing",prop:"Heavy, Two-Handed",mast:"Cleave",wt:"7 lb.",cost:"30 GP"},
@@ -3796,8 +3795,7 @@ const WEAPON_PROPERTIES=[
   ["Reach","A Reach weapon adds 5 feet to your reach when you attack with it, as well as when determining your reach for Opportunity Attacks with it."],
   ["Thrown","If a weapon has the Thrown property, you can throw the weapon to make a ranged attack, and you can draw that weapon as part of the attack. If the weapon is a Melee weapon, use the same ability modifier for the attack and damage rolls that you use for a melee attack with that weapon."],
   ["Two-Handed","A Two-Handed weapon requires two hands when you attack with it."],
-  ["Versatile","A Versatile weapon can be used with one or two hands. A damage value in parentheses appears with the property. The weapon deals that damage when used with two hands to make a melee attack."],
-  ["Special","The weapon has special rules described in its own entry (e.g., the Double-Bladed Scimitar)."]
+  ["Versatile","A Versatile weapon can be used with one or two hands. A damage value in parentheses appears with the property. The weapon deals that damage when used with two hands to make a melee attack."]
 ];
 const WEAPON_MASTERY=[
   ["Cleave","If you hit a creature with a melee attack roll using this weapon, you can make a melee attack roll with the weapon against a second creature within 5 feet of the first that is also within your reach. On a hit, the second creature takes the weapon's damage, but don't add your ability modifier to that damage unless that modifier is negative. You can make this extra attack only once per turn."],
@@ -3942,6 +3940,305 @@ const CONDITION_DATA=[
   {n:"Stunned",p:"p376",e:[["Incapacitated","You have the Incapacitated condition."],["Saving Throws Affected","You automatically fail Strength and Dexterity saving throws."],["Attacks Affected","Attack rolls against you have Advantage."]]},
   {n:"Unconscious",p:"p376",e:[["Inert","You have the Incapacitated and Prone conditions, and you drop whatever you're holding. When this condition ends, you remain Prone."],["Speed 0","Your Speed is 0 and can't increase."],["Attacks Affected","Attack rolls against you have Advantage."],["Saving Throws Affected","You automatically fail Strength and Dexterity saving throws."],["Automatic Critical Hits","Any attack roll that hits you is a Critical Hit if the attacker is within 5 feet of you."],["Unaware","You're unaware of your surroundings."]]}
 ];
+// ─── Glossary (glossary.md in the repo) ───────────────────────────────────────
+// The reference tables (tools, weapons, armor, conditions, languages) are also kept in glossary.md.
+// When that file loads it replaces the built-in copies below in place, so every panel and picker keeps
+// working and looking the same; if it can't be loaded (offline, missing file) the built-in data stays.
+// Entry format: "#### Name", optional "**Field:** value" lines, a blank line, then the text.
+const GLOSSARY_MD_URL="https://raw.githubusercontent.com/liapatiso95-ctrl/character-sheet/main/glossary.md";
+const GLOSSARY_HOUSE_MD_URL=GLOSSARY_MD_URL.replace(/glossary\.md$/,"glossary-house.md");
+const _glossCache={status:"idle",entries:[]};
+const _glossListeners=[];
+function _glossNotify(){_glossListeners.slice().forEach(function(fn){try{fn();}catch(e){}});}
+function parseGlossaryMarkdown(md){
+  var out=[];
+  String(md||"").replace(/\r/g,"").split(/^####[ \t]+/m).slice(1).forEach(function(block){
+    var lines=block.split("\n"),name=(lines[0]||"").trim();if(!name)return;
+    var f={},body=[],raw=[],past=false;
+    for(var i=1;i<lines.length;i++){
+      var ln=lines[i].trim();
+      if(/^#{1,3}(\s|$)/.test(ln))break;
+      if(!past){
+        var kv=ln.match(/^\*\*([^*:]+):\*\*\s*(.*)$/);
+        if(kv){f[kv[1].trim().toLowerCase()]=kv[2].trim();continue;}
+        if(!ln)continue;
+        past=true;
+      }
+      if(/^\\?(column|page|columnbreak|pagebreak)$/i.test(ln)||/^(\{\{|\}\})/.test(ln))continue;
+      body.push(ln);raw.push(lines[i].replace(/\s+$/,""));
+    }
+    var paras=[],cur=[];
+    body.forEach(function(l){if(!l){if(cur.length){paras.push(cur.join(" "));cur=[];}}else cur.push(l);});
+    if(cur.length)paras.push(cur.join(" "));
+    out.push({name:name,tag:f.tag||"",f:f,paras:paras,text:raw.join("\n").replace(/^\n+|\n+$/g,"")});
+  });
+  return out;
+}
+function applyGlossary(es){
+  var T=[],W={},WP=[],WM=[],A={},DD=[],AR=[],C=[],L={},LN=[];
+  es.forEach(function(e){
+    var f=e.f,t=e.tag.toLowerCase(),txt=e.paras.join("\n\n"),g=f.group||"Other";
+    if(t==="tool")T.push({n:e.name,d:txt});
+    else if(t==="weapon"){var w={n:e.name,dmg:f.damage||"",prop:f.properties||"",mast:f.mastery||"",wt:f.weight||"",cost:f.cost||""};if(f.special)w.special=f.special;(W[g]=W[g]||[]).push(w);}
+    else if(t==="weapon property")WP.push([e.name,txt]);
+    else if(t==="weapon mastery")WM.push([e.name,txt]);
+    else if(t==="armor")(A[g]=A[g]||[]).push({n:e.name,ac:f.ac||"",str:f.strength||"",stealth:f.stealth||"",wt:f.weight||"",cost:f.cost||""});
+    else if(t==="donning and doffing")DD.push([e.name,f.don||"",f.doff||""]);
+    else if(t==="armor rule")AR.push([e.name,txt]);
+    else if(t==="condition")C.push({n:e.name,p:f.source||"",e:e.paras.map(function(p){var m=p.match(/^\*\*(.+?)\.\*\*\s*([\s\S]*)$/);return m?[m[1],m[2]]:["",p];})});
+    else if(t==="language")(L[g]=L[g]||[]).push({n:e.name,sp:f.speakers||"",sc:f.script||""});
+    else if(t==="language note")LN.push([e.name,txt]);
+  });
+  var arr=function(dst,src){if(dst&&src.length){dst.length=0;Array.prototype.push.apply(dst,src);}};
+  var obj=function(dst,src){if(dst&&Object.keys(src).length){Object.keys(dst).forEach(function(k){delete dst[k];});Object.keys(src).forEach(function(k){dst[k]=src[k];});}};
+  arr(typeof TOOL_DATA!=="undefined"?TOOL_DATA:null,T);
+  obj(typeof WEAPON_DATA!=="undefined"?WEAPON_DATA:null,W);
+  arr(typeof WEAPON_PROPERTIES!=="undefined"?WEAPON_PROPERTIES:null,WP);
+  arr(typeof WEAPON_MASTERY!=="undefined"?WEAPON_MASTERY:null,WM);
+  obj(typeof ARMOR_DATA!=="undefined"?ARMOR_DATA:null,A);
+  arr(typeof ARMOR_DON_DOFF!=="undefined"?ARMOR_DON_DOFF:null,DD);
+  arr(typeof ARMOR_RULES!=="undefined"?ARMOR_RULES:null,AR);
+  arr(typeof CONDITION_DATA!=="undefined"?CONDITION_DATA:null,C);
+  obj(typeof LANG_DATA!=="undefined"?LANG_DATA:null,L);
+  arr(typeof LANG_NOTES!=="undefined"?LANG_NOTES:null,LN);
+}
+// house entries replace the official entry (kept on .official); missing fields are inherited
+function _glossMerge(off,house){
+  (house||[]).forEach(function(h){
+    var i=-1,hn=h.name.toLowerCase(),ht=(h.tag||"").toLowerCase();
+    off.some(function(o,k){if(o.name.toLowerCase()===hn&&(!ht||o.tag.toLowerCase()===ht)){i=k;return true;}return false;});
+    h.house=true;
+    if(i>=0){var o=off[i];h.official=o;h.f=Object.assign({},o.f,h.f);h.tag=h.f.tag||o.tag;off[i]=h;}
+    else off.push(h);
+  });
+  return off;
+}
+function loadGlossary(){
+  if(_glossCache.status!=="idle")return;
+  _glossCache.status="loading";
+  try{
+    fetch(GLOSSARY_MD_URL).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.text();}).then(function(md){
+      // optional house rules: same format, entries replace the official one of the same name + tag
+      return fetch(GLOSSARY_HOUSE_MD_URL).then(function(r){return r.ok?r.text():"";}).catch(function(){return "";}).then(function(hm){return [md,hm];});
+    }).then(function(two){
+      var es=parseGlossaryMarkdown(two[0]);
+      if(!es.length)throw new Error("empty");
+      es=_glossMerge(es,parseGlossaryMarkdown(two[1]));
+      applyGlossary(es);_glossCache.entries=es;_glossCache.status="ready";_glossMount();_glossNotify();
+    }).catch(function(){_glossCache.status="error";_glossNotify();});
+  }catch(e){_glossCache.status="error";}
+}
+// ─── Glossary links: glossary terms found in rendered text open a pop-up with the entry ───
+var _glRe={src:null};
+function _glossMatcher(){
+  var es=_glossCache.entries;if(!es||!es.length)return null;
+  if(_glRe.src!==es){
+    var esc=function(s){return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/['\u2019]/g,"['\u2019]");};
+    var L={any:[],exact:[],action:[],mid:[]},map={};
+    es.forEach(function(e,i){
+      var t=e.tag.toLowerCase(),lk=(e.f.link||"").toLowerCase();
+      if(lk==="no"||(lk!=="yes"&&t!=="rule"&&t!=="condition"&&t!=="tool"))return;
+      var mode=(e.f.match||"").toLowerCase()||((e.f.type||"").toLowerCase()==="action"?"mid":"");
+      [e.name].concat((e.f.also||"").split(",")).forEach(function(nm){
+        nm=nm.trim().replace(/\u2019/g,"'");if(!nm)return;
+        var md=L[mode]?mode:(/[\s\-]/.test(nm)?"any":"exact"),k=md+":"+(md==="any"?nm.toLowerCase():nm);
+        if(map[k]==null){map[k]=i;L[md].push(nm);}
+      });
+    });
+    var srt=function(a){return a.sort(function(x,y){return y.length-x.length;}).map(esc).join("|");};
+    var pre="(^|[^A-Za-z0-9'’])",post="(?![A-Za-z0-9'’])";
+    _glRe={src:es,map:map,
+      any:L.any.length?new RegExp(pre+"("+srt(L.any)+")"+post,"gi"):null,
+      exact:L.exact.length?new RegExp(pre+"("+srt(L.exact)+")"+post,"g"):null,
+      action:L.action.length?new RegExp(pre+"("+srt(L.action)+")(?=\\s+[Aa]ctions?\\b)","g"):null,
+      mid:L.mid.length?new RegExp(pre+"("+srt(L.mid)+")"+post,"g"):null};
+  }
+  return _glRe;
+}
+// → [{st,en,gi}] glossary matches inside a plain-text run
+function _glossHits(text){
+  var m=_glossMatcher();if(!m||!text||text.length<4)return [];
+  var hits=[];
+  ["any","exact","action","mid"].forEach(function(md){
+    var re=m[md];if(!re)return;re.lastIndex=0;var x;
+    while((x=re.exec(text))){
+      var st=x.index+x[1].length,nm=x[2],nk=nm.replace(/\u2019/g,"'"),gi=m.map[md+":"+(md==="any"?nk.toLowerCase():nk)];
+      // "mid": an action name counts when capitalised mid-sentence ("you can Hide"), or anywhere before "action"
+      if(md==="mid"&&!/^\s+[Aa]ctions?\b/.test(text.slice(st+nm.length))&&/(^|[.!?\n]["\u201d\u2019')\]]*)\s*$/.test(text.slice(0,st)))continue;
+      if(gi!=null)hits.push({st:st,en:st+nm.length,gi:gi,direct:md==="action"||md==="mid"});
+      if(x[0].length===0)re.lastIndex++;
+    }
+  });
+  return hits;
+}
+function _glossOpen(v){_glossMount();if(window.__openGloss)window.__openGloss(v);else setTimeout(function(){if(window.__openGloss)window.__openGloss(v);},60);}
+// everything a clicked name could mean: the spell of that name (sheet) and every glossary entry called that
+function _glossCands(txt){
+  var l=String(txt||"").trim().toLowerCase().replace(/\u2019/g,"'"),out=[];
+  if(typeof _spKey==="function"&&_spKey(txt))out.push({k:"spell",label:"Spell"});
+  (_glossCache.entries||[]).forEach(function(e,i){
+    if((e.f.link||"").toLowerCase()==="no")return;
+    var names=[e.name].concat((e.f.also||"").split(",")).map(function(x){return x.trim().toLowerCase().replace(/\u2019/g,"'");});
+    if(names.indexOf(l)>=0)out.push({k:"g",gi:i,label:(e.tag||"Other")+(e.f.type?" · "+e.f.type:"")});
+  });
+  return out;
+}
+// open the entry, or ask first when the same name is both a spell and a glossary entry (or several entries)
+function _glossClick(txt,gi,direct,spellOpen){
+  var c=direct?[]:_glossCands(txt);
+  if(c.length>=2)_glossOpen({title:txt,choose:c,spellOpen:spellOpen||null});
+  else if(gi!=null)_glossOpen(gi);
+  else if(spellOpen)spellOpen();
+}
+function _glossSpan(txt,gi,key,direct){
+  var e=_glossCache.entries[gi];
+  return <span key={key} className="glink" title={"Glossary: "+(e?e.name:"")} onClick={function(ev){ev.stopPropagation();_glossClick(txt,gi,direct,(typeof _spKey==="function"&&_spKey(txt)&&window.__openSpell)?function(){window.__openSpell(txt,"",-1);}:null);}}>{txt}</span>;
+}
+// plain-text run → strings and clickable glossary terms (used where there are no spell links)
+function _glossLinks(text,key){
+  var hits=_glossHits(text);if(!hits.length)return text;
+  hits.sort(function(a,b){return a.st-b.st||b.en-a.en;});
+  var out=[],pos=0;
+  hits.forEach(function(h,i){
+    if(h.st<pos)return;
+    if(h.st>pos)out.push(text.slice(pos,h.st));
+    out.push(_glossSpan(text.slice(h.st,h.en),h.gi,key+"-gl"+i,h.direct));
+    pos=h.en;
+  });
+  if(pos<text.length)out.push(text.slice(pos));
+  return out;
+}
+function _glossFieldLine(e){return Object.keys(e.f).filter(function(k){return k!=="tag"&&k!=="link"&&k!=="also"&&k!=="match"&&e.f[k];}).map(function(k){return k.charAt(0).toUpperCase()+k.slice(1)+": "+e.f[k];});}
+function _glossBody(e){
+  var noop=function(){},t=(e.tag||"").toLowerCase();
+  var pairs=Object.keys(e.f).filter(function(k){return k!=="tag"&&k!=="link"&&k!=="also"&&k!=="match"&&e.f[k];}).map(function(k){return [k==="ac"?"AC":k.charAt(0).toUpperCase()+k.slice(1),e.f[k]];});
+  var lab={fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1,textTransform:"uppercase",color:"var(--gold-l)",whiteSpace:"nowrap",paddingTop:3};
+  var val={fontFamily:"'EB Garamond',serif",fontSize:14,color:"var(--parch)",lineHeight:1.4,minWidth:0};
+  return <div className="glossmd">
+    {pairs.length>0&&<div style={{display:"grid",gridTemplateColumns:"auto 1fr",columnGap:12,rowGap:3,alignItems:"start",marginBottom:e.text?8:0}}>
+      {pairs.map(function(pr,i){return [<div key={"k"+i} style={lab}>{pr[0]}</div>,<div key={"v"+i} style={val}>{pr[1]}</div>];})}
+    </div>}
+    {e.text&&t==="tool"&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:14,color:"var(--parch)",lineHeight:1.6}}>
+      {e.paras.map(function(para,pi){
+        if(para==="Examples of Advantage on a Roll"||para==="Tool Features") return <div key={pi} style={{fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1.5,textTransform:"uppercase",color:"var(--gold-l)",marginTop:12,marginBottom:5,borderBottom:"1px solid rgba(201,150,42,.15)",paddingBottom:3}}>{para}</div>;
+        if(pi===0&&para.indexOf(" · ")>=0) return <div key={pi} style={{fontStyle:"italic",color:"rgba(232,213,176,.65)",marginBottom:7}}>{para}</div>;
+        var m=para.match(/^([A-Z][A-Za-z' ]{1,30}(?: \(\d{4}\))?)\. ([\s\S]+)$/);
+        return <div key={pi} style={{marginBottom:7}}>{m?[<strong key="s">{m[1]+". "}</strong>,_glossLinks(m[2],"tp"+pi)]:_glossLinks(para,"tp"+pi)}</div>;
+      })}
+    </div>}
+    {e.text&&t!=="tool"&&((typeof Markdown==="function")?<Markdown text={e.text} />:<MdField ro={true} value={e.text} onChange={noop} style={{width:"100%",background:"transparent",border:"none",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:14,lineHeight:1.5,outline:"none",padding:0}} />)}
+  </div>;
+}
+// entry body with the house-rule marker and a switch to the official text it replaces
+function GlossEntryView({e}){
+  const [off,setOff]=React.useState(false);
+  React.useEffect(function(){setOff(false);},[e]);
+  var cur=(off&&e.official)?e.official:e;
+  var chip={fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,textTransform:"uppercase",borderRadius:8,padding:"2px 8px",whiteSpace:"nowrap",userSelect:"none"};
+  return <div>
+    {e.house&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"nowrap",marginBottom:8}}>
+      <span style={Object.assign({},chip,{color:off?"rgba(232,213,176,.5)":"#6fcf85",border:"1px solid "+(off?"rgba(232,213,176,.25)":"rgba(74,156,92,.6)")})}>{off?"Official text":"House rule"}</span>
+      {e.official&&<span onClick={function(ev){ev.stopPropagation();setOff(!off);}} style={Object.assign({},chip,{cursor:"pointer",color:"var(--gold-l)",border:"1px solid rgba(201,150,42,.5)",background:"rgba(201,150,42,.1)"})}>{off?"Show house rule":"Show official"}</span>}
+    </div>}
+    {_glossBody(cur)}
+  </div>;
+}
+function GlossPopHost(){
+  const [gi,setGi]=React.useState(null);
+  React.useEffect(function(){window.__openGloss=function(i){setGi(i);};return function(){window.__openGloss=null;};},[]);
+  React.useEffect(function(){
+    if(gi==null)return;
+    var h=function(e){if(e.key==="Escape")setGi(null);};
+    document.addEventListener("keydown",h);return function(){document.removeEventListener("keydown",h);};
+  },[gi]);
+  if(gi&&typeof gi==="object"){
+    var ch=gi,btn={cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,textTransform:"uppercase",color:"var(--gold-l)",border:"1px solid rgba(201,150,42,.5)",background:"rgba(201,150,42,.1)",borderRadius:3,padding:"7px 12px",userSelect:"none",whiteSpace:"nowrap"};
+    return <div onClick={function(){setGi(null);}} style={{position:"fixed",inset:0,height:"100dvh",background:"rgba(0,0,0,.72)",zIndex:100004,display:"flex",alignItems:"center",justifyContent:"center",padding:16,boxSizing:"border-box"}}>
+      <div onClick={function(ev){ev.stopPropagation();}} style={{background:"#1a1410",border:"1px solid rgba(201,150,42,.5)",borderRadius:4,padding:"16px 18px",maxWidth:420,width:"100%",maxHeight:"100%",overflowY:"auto",boxSizing:"border-box",color:"var(--parch)"}}>
+        <div style={{fontFamily:"'Cinzel',serif",fontSize:15,letterSpacing:1,color:"var(--gold-l)",marginBottom:6}}>{ch.title}</div>
+        <div style={{fontFamily:"'EB Garamond',serif",fontSize:14,marginBottom:12}}>Which one do you want to see?</div>
+        <div style={{display:"flex",gap:8,flexWrap:"nowrap",overflowX:"auto"}}>
+          {ch.choose.map(function(c,i){return <div key={i} style={btn} onClick={function(){if(c.k==="spell"){setGi(null);if(ch.spellOpen)ch.spellOpen();}else setGi(c.gi);}}>{c.label}</div>;})}
+        </div>
+      </div>
+    </div>;
+  }
+  var e=gi!=null?_glossCache.entries[gi]:null;
+  if(!e)return null;
+  var sub=e.f.type||e.f.group||"";
+  return <div onClick={function(){setGi(null);}} style={{position:"fixed",inset:0,height:"100dvh",background:"rgba(0,0,0,.72)",zIndex:100004,display:"flex",alignItems:"center",justifyContent:"center",padding:16,boxSizing:"border-box"}}>
+    <div onClick={function(ev){ev.stopPropagation();}} style={{background:"#1a1410",border:"1px solid rgba(201,150,42,.5)",borderRadius:4,padding:"16px 18px",maxWidth:560,width:"100%",maxHeight:"100%",overflowY:"auto",boxSizing:"border-box",color:"var(--parch)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+        <span style={{flex:"1 1 auto",minWidth:0,fontFamily:"'Cinzel',serif",fontSize:15,letterSpacing:1,color:"var(--gold-l)"}}>{e.name}</span>
+        <span style={{flex:"0 0 auto",fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,textTransform:"uppercase",color:"rgba(232,213,176,.5)",border:"1px solid rgba(232,213,176,.2)",borderRadius:8,padding:"1px 7px",whiteSpace:"nowrap"}}>{(e.tag||"Other")+(sub?" · "+sub:"")}</span>
+        <span onClick={function(){setGi(null);}} title="Close" style={{flex:"0 0 auto",cursor:"pointer",fontFamily:"'Cinzel',serif",fontSize:14,color:"rgba(232,213,176,.6)",padding:"0 4px"}}>✕</span>
+      </div>
+      <GlossEntryView e={e} />
+    </div>
+  </div>;
+}
+function _glossMount(){
+  if(window.__glossHost)return;
+  try{
+    var st=document.createElement("style");st.textContent=".glink{border-bottom:1px dotted rgba(201,150,42,.75);cursor:help}.glink:hover{background:rgba(201,150,42,.18)}.glossmd strong,.glossmd b{color:var(--gold-l)}";document.head.appendChild(st);
+    var d=document.createElement("div");document.body.appendChild(d);
+    window.__glossHost=ReactDOM.createRoot(d);window.__glossHost.render(<GlossPopHost />);
+  }catch(e){}
+}
+// Compendium → Glossary tab: every glossary.md entry, searchable, with a category filter.
+function GlossaryPanel(){
+  const [,tick]=React.useState(0);
+  const [q,setQ]=React.useState("");
+  const [dq,setDq]=React.useState("");
+  const [cat,setCat]=React.useState("all");
+  const [open,setOpen]=React.useState({});
+  React.useEffect(function(){
+    var fn=function(){tick(function(n){return n+1;});};
+    _glossListeners.push(fn);loadGlossary();
+    return function(){var i=_glossListeners.indexOf(fn);if(i>=0)_glossListeners.splice(i,1);};
+  },[]);
+  var st=_glossCache.status,es=_glossCache.entries||[];
+  var catOf=function(e){return e.tag||"Other";};
+  var cats=[];es.forEach(function(e){var c=catOf(e);if(cats.indexOf(c)<0)cats.push(c);});
+  var ql=q.trim().toLowerCase(),dl=dq.trim().toLowerCase();
+  var fieldLine=_glossFieldLine;
+  var list=es.map(function(e,i){return {e:e,i:i};}).filter(function(x){
+    var e=x.e;
+    if(cat!=="all"&&catOf(e)!==cat)return false;
+    if(ql&&e.name.toLowerCase().indexOf(ql)<0)return false;
+    if(dl&&(e.text+" "+fieldLine(e).join(" ")).toLowerCase().indexOf(dl)<0)return false;
+    return true;
+  });
+  if(cat==="all"||ql)list.sort(function(a,b){return a.e.name.localeCompare(b.e.name)||a.i-b.i;});
+  var inp={background:"rgba(0,0,0,.35)",border:"1px solid rgba(201,150,42,.3)",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:14,padding:"6px 10px",borderRadius:2,outline:"none",boxSizing:"border-box"};
+  var noop=function(){};
+  var body=function(t){return (typeof Markdown==="function")?<Markdown text={t} />:<MdField ro={true} value={t} onChange={noop} style={{width:"100%",background:"transparent",border:"none",color:"var(--parch)",fontFamily:"'EB Garamond',serif",fontSize:14,lineHeight:1.5,outline:"none",padding:0}} />;};
+  return <div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10,alignItems:"center"}}>
+      <input value={q} onChange={function(e){setQ(e.target.value);}} placeholder="Name contains..." style={Object.assign({},inp,{flex:"1 1 160px",minWidth:140})} />
+      <input value={dq} onChange={function(e){setDq(e.target.value);}} placeholder="Text contains..." style={Object.assign({},inp,{flex:"1 1 160px",minWidth:140})} />
+      <select value={cat} onChange={function(e){setCat(e.target.value);}} style={Object.assign({},inp,{flex:"0 1 190px"})}>
+        <option value="all">All categories</option>
+        {cats.map(function(c){return <option key={c} value={c}>{c}</option>;})}
+      </select>
+    </div>
+    {st!=="ready"&&<div style={{padding:"20px",textAlign:"center",fontFamily:"'EB Garamond',serif",fontSize:13,fontStyle:"italic",color:"rgba(232,213,176,.4)"}}>{st==="error"?"Glossary unavailable — check glossary.md in repo (or you are offline).":"Loading glossary…"}</div>}
+    {st==="ready"&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:12,fontStyle:"italic",color:"rgba(232,213,176,.4)",marginBottom:6}}>{list.length+" entr"+(list.length===1?"y":"ies")}</div>}
+    {st==="ready"&&list.map(function(x){
+      var e=x.e,isOpen=!!open[x.i],fl=fieldLine(e),sub=e.f.type||e.f.group||"";
+      return <div key={x.i} style={{borderBottom:"1px solid rgba(201,150,42,.14)"}}>
+        <div onClick={function(){var n=Object.assign({},open);n[x.i]=!isOpen;setOpen(n);}} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 4px",cursor:"pointer",userSelect:"none"}}>
+          <span style={{display:"inline-block",width:5,height:5,flex:"0 0 auto",borderRight:"2px solid rgba(201,150,42,.7)",borderBottom:"2px solid rgba(201,150,42,.7)",transform:isOpen?"rotate(45deg) translate(-1px,-1px)":"rotate(-45deg)"}} />
+          <span style={{fontFamily:"'EB Garamond',serif",fontSize:15,fontWeight:600,color:"var(--gold-l)",flex:"1 1 auto",minWidth:0}}>{e.name}</span>
+          <span style={{flex:"0 0 auto",fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,textTransform:"uppercase",color:"rgba(232,213,176,.5)",border:"1px solid rgba(232,213,176,.2)",borderRadius:8,padding:"1px 7px",whiteSpace:"nowrap"}}>{catOf(e)+(sub?" · "+sub:"")+(e.house?" · House":"")}</span>
+        </div>
+        {isOpen&&<div style={{padding:"0 4px 10px 17px"}}><GlossEntryView e={e} /></div>}
+      </div>;
+    })}
+    {st==="ready"&&<div style={{fontFamily:"'EB Garamond',serif",fontSize:11,fontStyle:"italic",color:"rgba(232,213,176,.35)",marginTop:14,lineHeight:1.4}}>This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.</div>}
+  </div>;
+}
+loadGlossary();
 
 function ConditionReferenceModal({onClose}){
   const {useState:us}=React;
@@ -4524,7 +4821,7 @@ function CompendiumPage({onAddCreature}){
   React.useEffect(function(){
     if(!includeSrd){setSrdResults([]);return;}
     if(kind==="exploits"){setSrdResults([]);return;} // no SRD API for exploits
-    if(kind==="species"){setSrdResults([]);return;}
+    if(kind==="species"||kind==="glossary"){setSrdResults([]);return;}
     var qq=(query||descQuery||"").trim();
     if(qq.length<2){setSrdResults([]);return;}
     if(debounceRef.current) clearTimeout(debounceRef.current);
@@ -4781,16 +5078,16 @@ function CompendiumPage({onAddCreature}){
       <div className="sh" style={{display:"flex",alignItems:"center"}}>
         <span>Compendium Search</span>
         {(function(){
-          var st=kind==="spells"?spellCache.status:kind==="feats"?featCache.status:kind==="exploits"?exploitCache.status:kind==="creatures"?creatureCache.status:kind==="species"?_speciesCache.status:itemCache.status;
+          var st=kind==="spells"?spellCache.status:kind==="feats"?featCache.status:kind==="exploits"?exploitCache.status:kind==="creatures"?creatureCache.status:kind==="species"?_speciesCache.status:kind==="glossary"?_glossCache.status:itemCache.status;
           var col=st==="ready"?"rgba(74,156,92,.6)":st==="loading"?"rgba(201,150,42,.5)":"rgba(201,74,42,.5)";
           var lbl=st==="ready"?"Compendium file loaded":st==="loading"?"Loading compendium file…":"Compendium file unavailable (offline or missing)";
           return <span title={lbl} style={{display:"inline-flex",alignItems:"center",gap:4,fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,color:col,userSelect:"none",marginLeft:"auto",fontWeight:"normal",textTransform:"uppercase"}}>
             <span style={{width:6,height:6,borderRadius:"50%",background:col,display:"inline-block",flexShrink:0}} />
-            {kind==="spells"?"Spells":kind==="feats"?"Feats":kind==="exploits"?"Exploits":kind==="creatures"?"Creatures":kind==="species"?"Species":"Items"} File
+            {kind==="spells"?"Spells":kind==="feats"?"Feats":kind==="exploits"?"Exploits":kind==="creatures"?"Creatures":kind==="species"?"Species":kind==="glossary"?"Glossary":"Items"} File
           </span>;
         })()}
       </div>
-      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>{tabBtn("spells","Spells")}{tabBtn("feats","Feats")}{tabBtn("items","Items")}{tabBtn("exploits","Exploits")}{tabBtn("species","Species")}
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>{tabBtn("spells","Spells")}{tabBtn("feats","Feats")}{tabBtn("items","Items")}{tabBtn("exploits","Exploits")}{tabBtn("species","Species")}{tabBtn("glossary","Glossary")}
         {creaturesEnabled
           ? tabBtn("creatures","Creatures")
           : <span onClick={function(){window.__confirm("The monster compendium is a reference and prep tool — best for creatures you control (summons, wild shape, companions) and for DMs.\n\nPlease don't use it to metagame: looking up an enemy's AC, HP, weaknesses, or tactics that your character wouldn't know can spoil encounters and undercut your DM. Use it responsibly and follow your table's norms.\n\nDo you agree?",function(){setCreaturesEnabled(true);switchKind("creatures");},"Agree");}}
@@ -4801,7 +5098,8 @@ function CompendiumPage({onAddCreature}){
       </div>
 
       {kind==="species"&&<SpeciesListPanel />}
-      {kind!=="species"&&(<React.Fragment>
+      {kind==="glossary"&&<GlossaryPanel />}
+      {kind!=="species"&&kind!=="glossary"&&(<React.Fragment>
       {/* Search controls */}
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8,alignItems:"center",position:"relative"}}>
         <input value={query} onChange={function(e){setQuery(e.target.value);}} placeholder="Name contains..." style={Object.assign({},inputStyle,{flex:"1 1 160px",minWidth:140})} />
@@ -6923,7 +7221,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:ARCL,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.21.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(201,150,42,.35)",userSelect:"none"}}>DM Screen · v1.26.1</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
