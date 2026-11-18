@@ -4111,13 +4111,36 @@ function applyGlossary(es){
   obj(typeof LANG_DATA!=="undefined"?LANG_DATA:null,L);
   arr(typeof LANG_NOTES!=="undefined"?LANG_NOTES:null,LN);
 }
-// house entries replace the official entry (kept on .official); missing fields are inherited
+// house entries replace the official entry (kept on .official); missing fields are inherited.
+// "**Addition to:** <rule>": the entry's text is added after the rule's own text instead of replacing it.
+// "**Variant to:** <rule>": the entry (its heading is the variant's name) is shown under the rule as "Variant: <name>".
+// Several additions/variants stack in file order; "Show official" still shows the untouched rule.
+// If the named rule isn't found the entry is kept as an entry of its own.
 function _glossMerge(off,house){
   (house||[]).forEach(function(h){
-    var i=-1,hn=h.name.toLowerCase(),ht=(h.tag||"").toLowerCase();
-    off.some(function(o,k){if(o.name.toLowerCase()===hn&&(!ht||o.tag.toLowerCase()===ht)){i=k;return true;}return false;});
+    var hn=h.name.toLowerCase(),ht=(h.tag||"").toLowerCase();
+    var addV=h.f["addition to"],varV=h.f["variant to"];
+    var isAdd=h.f.hasOwnProperty("addition to"),isVar=!isAdd&&h.f.hasOwnProperty("variant to");
+    var at=String(isAdd?addV:varV||"").trim();
+    var tn=(!at||/^(yes|true)$/i.test(at))?(isAdd?hn:""):at.toLowerCase();
+    delete h.f["addition to"];delete h.f["variant to"];
+    var i=-1;
+    if(tn)off.some(function(o,k){if(o.name.toLowerCase()===tn&&(!ht||o.tag.toLowerCase()===ht)){i=k;return true;}return false;});
     h.house=true;
-    if(i>=0){var o=off[i];h.official=o;h.f=Object.assign({},o.f,h.f);h.tag=h.f.tag||o.tag;off[i]=h;}
+    if(i>=0&&(isAdd||isVar)){
+      var o=off[i],base=o.official||o,tool=(o.tag||"").toLowerCase()==="tool";
+      var m=Object.assign({},o),ap=(h.paras||[]).slice(),at2=h.text||"";
+      if(isVar){
+        var pre=tool?"Variant: "+h.name+". ":"**Variant: "+h.name+".** ";
+        if(ap.length)ap[0]=pre+ap[0];else ap=[pre.trim()];
+        at2=pre+at2;
+      }
+      m.paras=(o.paras||[]).concat(ap);
+      m.text=[o.text,at2].filter(Boolean).join("\n\n");
+      m.house=true;m.added=m.added||isAdd;m.variant=m.variant||isVar;m.official=base;
+      off[i]=m;
+    }
+    else if(i>=0){var o2=off[i];h.official=o2.official||o2;h.f=Object.assign({},o2.f,h.f);h.tag=h.f.tag||o2.tag;off[i]=h;}
     else off.push(h);
   });
   return off;
@@ -4231,7 +4254,7 @@ function _glossBody(e){
       {e.paras.map(function(para,pi){
         if(para==="Examples of Advantage on a Roll"||para==="Tool Features") return <div key={pi} style={{fontFamily:"'Cinzel',serif",fontSize:9,letterSpacing:1.5,textTransform:"uppercase",color:"var(--gold-l)",marginTop:12,marginBottom:5,borderBottom:"1px solid rgba(201,150,42,.15)",paddingBottom:3}}>{para}</div>;
         if(pi===0&&para.indexOf(" · ")>=0) return <div key={pi} style={{fontStyle:"italic",color:"rgba(232,213,176,0.88)",marginBottom:7}}>{para}</div>;
-        var m=para.match(/^([A-Z][A-Za-z' ]{1,30}(?: \(\d{4}\))?)\. ([\s\S]+)$/);
+        var m=para.match(/^((?:Variant: )?[A-Z][A-Za-z' ]{1,30}(?: \(\d{4}\))?)\. ([\s\S]+)$/);
         return <div key={pi} style={{marginBottom:7}}>{m?[<strong key="s">{m[1]+". "}</strong>,_glossLinks(m[2],"tp"+pi)]:_glossLinks(para,"tp"+pi)}</div>;
       })}
     </div>}
@@ -4246,8 +4269,8 @@ function GlossEntryView({e}){
   var chip={fontFamily:"'Cinzel',serif",fontSize:8,letterSpacing:1,textTransform:"uppercase",borderRadius:8,padding:"2px 8px",whiteSpace:"nowrap",userSelect:"none"};
   return <div>
     {e.house&&<div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"nowrap",marginBottom:8}}>
-      <span style={Object.assign({},chip,{color:off?"rgba(232,213,176,0.83)":"#6fcf85",border:"1px solid "+(off?"rgba(232,213,176,.25)":"rgba(74,156,92,.6)")})}>{off?"Official text":"House rule"}</span>
-      {e.official&&<span onClick={function(ev){ev.stopPropagation();setOff(!off);}} style={Object.assign({},chip,{cursor:"pointer",color:"var(--gold-l)",border:"1px solid rgba(201,150,42,.5)",background:"rgba(201,150,42,.1)"})}>{off?"Show house rule":"Show official"}</span>}
+      <span style={Object.assign({},chip,{color:off?"rgba(232,213,176,0.83)":"#6fcf85",border:"1px solid "+(off?"rgba(232,213,176,.25)":"rgba(74,156,92,.6)")})}>{off?"Official text":(e.added?"House addition":e.variant?"House variant":"House rule")}</span>
+      {e.official&&<span onClick={function(ev){ev.stopPropagation();setOff(!off);}} style={Object.assign({},chip,{cursor:"pointer",color:"var(--gold-l)",border:"1px solid rgba(201,150,42,.5)",background:"rgba(201,150,42,.1)"})}>{off?((e.added||e.variant)?"Show with house text":"Show house rule"):"Show official"}</span>}
     </div>}
     {_glossBody(cur)}
   </div>;
@@ -7890,7 +7913,7 @@ function App(){
         <span style={{fontFamily:"'Cinzel',serif",fontSize:14,color:"#c8affa",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{addMsg.name} added to combat</span>
       </div>
     </div>}
-    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(235,195,100,0.84)",userSelect:"none"}}>DM Screen · v1.42.0</div>
+    <div style={{textAlign:"center",padding:"18px 0 10px",fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:2,color:"rgba(235,195,100,0.84)",userSelect:"none"}}>DM Screen · v1.43.0</div>
     {confirmState.open&&<ConfirmModal message={confirmState.message} confirmLabel={confirmState.confirmLabel} onYes={function(){if(confirmState.onConfirm)confirmState.onConfirm();setConfirmState({open:false,message:"",onConfirm:null});}} onNo={function(){setConfirmState({open:false,message:"",onConfirm:null});}}/>}
     <input type="file" accept="application/json,.json" ref={fileRef} style={{display:"none"}} onChange={doImport}/>
   </div>;
